@@ -39,3 +39,14 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# vendored theme source (only compiled dist assets are copied into public/adminlte)
+/AdminLTE-master
+
+/app/generated/prisma
+
+# user-uploaded ticket attachments (stored locally under public/uploads)
+/public/uploads
+
+# Claude Code local/personal settings (machine-specific, not shared)
+.claude/settings.local.json

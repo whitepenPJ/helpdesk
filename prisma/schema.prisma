@@ -1,0 +1,327 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../app/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id                                       String             @id @default(cuid())
+  name                                     String
+  email                                    String             @unique
+  passwordHash                             String?
+  role                                     Role               @default(USER)
+  status                                   UserStatus         @default(ACTIVE)
+  isAssignee                               Boolean            @default(false)
+  image                                    String?
+  companyId                                String?
+  departmentId                             String?
+  userGroupId                              String?
+  createdAt                                DateTime           @default(now())
+  updatedAt                                DateTime           @updatedAt
+  telephone                                String?
+  // Auth.js (NextAuth) OAuth account-linking bookkeeping — unused by the
+  // Credentials provider, only populated for OAuth sign-ins (e.g. Azure AD).
+  emailVerified                            DateTime?
+  // Last time this user opened the header notification bell — drives the
+  // unread badge count on the derived TicketHistory activity feed.
+  notificationsSeenAt                      DateTime?
+  accounts                                 Account[]
+  sessions                                 Session[]
+  AuditLog                                 AuditLog[]
+  CategoryAdmin                            CategoryAdmin[]
+  Department_Department_supervisorIdToUser Department?        @relation("Department_supervisorIdToUser")
+  LessonLearned                            LessonLearned[]
+  PushSubscription                         PushSubscription[]
+  Ticket_Ticket_assigneeIdToUser           Ticket[]           @relation("Ticket_assigneeIdToUser")
+  Ticket_Ticket_createdByIdToUser          Ticket[]           @relation("Ticket_createdByIdToUser")
+  TicketApproval                           TicketApproval[]
+  TicketComment                            TicketComment[]
+  TicketHistory                            TicketHistory[]
+  Company                                  Company?           @relation(fields: [companyId], references: [id])
+  Department_User_departmentIdToDepartment Department?        @relation("User_departmentIdToDepartment", fields: [departmentId], references: [id])
+  UserGroup                                UserGroup?         @relation(fields: [userGroupId], references: [id])
+
+  @@index([companyId])
+  @@index([departmentId])
+  @@index([role])
+}
+
+// Auth.js (NextAuth) adapter models — see https://authjs.dev/getting-started/adapters/prisma
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model AuditLog {
+  id        String   @id
+  userId    String?
+  action    String
+  module    String
+  details   Json?
+  ipAddress String?
+  timestamp DateTime @default(now())
+  User      User?    @relation(fields: [userId], references: [id])
+
+  @@index([module])
+  @@index([userId])
+}
+
+model Category {
+  id            String          @id
+  name          String          @unique
+  description   String?
+  isActive      Boolean         @default(true)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime
+  CategoryAdmin CategoryAdmin[]
+  Ticket        Ticket[]
+}
+
+model CategoryAdmin {
+  id         String   @id
+  categoryId String
+  adminId    String
+  createdAt  DateTime @default(now())
+  User       User     @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  Category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([categoryId, adminId])
+}
+
+model Company {
+  id         String       @id
+  name       String
+  address    String?
+  taxId      String?
+  isActive   Boolean      @default(true)
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime
+  Department Department[]
+  Ticket     Ticket[]
+  User       User[]
+}
+
+model Department {
+  id                                 String   @id
+  name                               String
+  companyId                          String
+  supervisorId                       String?  @unique
+  createdAt                          DateTime @default(now())
+  updatedAt                          DateTime
+  Company                            Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  User_Department_supervisorIdToUser User?    @relation("Department_supervisorIdToUser", fields: [supervisorId], references: [id])
+  Ticket                             Ticket[]
+  User_User_departmentIdToDepartment User[]   @relation("User_departmentIdToDepartment")
+
+  @@unique([companyId, name])
+}
+
+model LessonLearned {
+  id          String   @id
+  title       String
+  description String
+  images      String[]
+  attachments String[]
+  isActive    Boolean  @default(true)
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime
+  User        User     @relation(fields: [createdById], references: [id])
+
+  @@index([createdById])
+  @@index([isActive])
+}
+
+model PushSubscription {
+  id        String   @id
+  userId    String
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+  User      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model SystemSetting {
+  id        String   @id
+  key       String   @unique
+  value     String
+  updatedAt DateTime
+}
+
+model Ticket {
+  id                            String          @id
+  ticketNumber                  String          @unique
+  title                         String
+  description                   String
+  problem                       String?
+  solution                      String?
+  categoryId                    String
+  companyId                     String
+  departmentId                  String
+  createdById                   String
+  assigneeId                    String?
+  assignedGroupId               String?
+  status                        TicketStatus    @default(NEW)
+  priority                      Priority        @default(MEDIUM)
+  telephone                     String?
+  rating                        Rating?
+  ratingComment                 String?
+  ratingScore                   Int?
+  // Snapshot of status right before entering WAITING (supervisor approval
+  // requested), restored once the supervisor approves/rejects.
+  preApprovalStatus             TicketStatus?
+  attachments                   String[]
+  closedAt                      DateTime?
+  resolvedAt                    DateTime?
+  autoCloseDueDate              DateTime?
+  createdAt                     DateTime        @default(now())
+  updatedAt                     DateTime
+  UserGroup                     UserGroup?      @relation(fields: [assignedGroupId], references: [id])
+  User_Ticket_assigneeIdToUser  User?           @relation("Ticket_assigneeIdToUser", fields: [assigneeId], references: [id])
+  Category                      Category        @relation(fields: [categoryId], references: [id])
+  Company                       Company         @relation(fields: [companyId], references: [id])
+  User_Ticket_createdByIdToUser User            @relation("Ticket_createdByIdToUser", fields: [createdById], references: [id])
+  Department                    Department      @relation(fields: [departmentId], references: [id])
+  TicketApproval                TicketApproval?
+  TicketComment                 TicketComment[]
+  TicketHistory                 TicketHistory[]
+
+  @@index([assignedGroupId])
+  @@index([assigneeId])
+  @@index([autoCloseDueDate])
+  @@index([companyId, departmentId])
+  @@index([createdById])
+  @@index([status])
+}
+
+model TicketApproval {
+  id             String         @id
+  ticketId       String         @unique
+  supervisorId   String
+  status         ApprovalStatus @default(PENDING)
+  // The admin's message when requesting approval. `comments` is the
+  // supervisor's decision reason (approve/reject), set when `status` moves
+  // off PENDING.
+  requestMessage String?
+  comments       String?
+  decidedAt      DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime
+  User           User           @relation(fields: [supervisorId], references: [id])
+  Ticket         Ticket         @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+}
+
+model TicketComment {
+  id          String   @id
+  ticketId    String
+  authorId    String
+  message     String
+  attachments String[]
+  createdAt   DateTime @default(now())
+  User        User     @relation(fields: [authorId], references: [id])
+  Ticket      Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId])
+}
+
+model TicketHistory {
+  id            String   @id
+  ticketId      String
+  actorId       String?
+  action        String
+  previousState String?
+  newState      String?
+  timestamp     DateTime @default(now())
+  User          User?    @relation(fields: [actorId], references: [id])
+  Ticket        Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId])
+}
+
+model UserGroup {
+  id          String   @id
+  name        String   @unique
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime
+  Ticket      Ticket[]
+  User        User[]
+}
+
+enum Role {
+  USER
+  ADMIN
+  SUPERVISOR
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum Rating {
+  NEEDS_IMPROVEMENT
+  FAIRLY_SATISFIED
+  FULLY_SATISFIED
+}
+
+enum TicketStatus {
+  NEW
+  ASSIGNED
+  RESOLVED
+  VERIFIED
+  REOPENED
+  CLOSED
+  WAITING
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
