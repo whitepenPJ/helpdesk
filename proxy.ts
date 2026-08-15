@@ -36,8 +36,15 @@ export default auth((req) => {
 // browsers and Next's own image optimizer fetch them with no auth context.
 // Matching by extension avoids re-discovering this one file at a time (see
 // the icon.png incident this same pattern already fixed once).
+//
+// api/mcp is also excluded — MCP clients authenticate with a bearer API
+// token they read from Profile > API Tokens, not a session cookie, and
+// authenticate themselves inside the route (see app/lib/mcp-auth.ts). If
+// this proxy intercepted it, every MCP request would get redirected to
+// /login before ever reaching that logic, since there's never a session
+// cookie to find.
 export const config = {
   matcher: [
-    "/((?!api/auth|_next/static|_next/image|adminlte/|favicon.ico|icon.png|.*\\.(?:png|jpg|jpeg|svg|webp|gif|ico|css|js|woff2?)$).*)",
+    "/((?!api/auth|api/mcp|_next/static|_next/image|adminlte/|favicon.ico|icon.png|.*\\.(?:png|jpg|jpeg|svg|webp|gif|ico|css|js|woff2?)$).*)",
   ],
 };

@@ -31,6 +31,7 @@ model User {
   notificationsSeenAt                      DateTime?
   accounts                                 Account[]
   sessions                                 Session[]
+  ApiToken                                 ApiToken[]
   AuditLog                                 AuditLog[]
   CategoryAdmin                            CategoryAdmin[]
   Department_Department_supervisorIdToUser Department?        @relation("Department_supervisorIdToUser")
@@ -98,6 +99,22 @@ model AuditLog {
   User      User?    @relation(fields: [userId], references: [id])
 
   @@index([module])
+  @@index([userId])
+}
+
+// Personal access tokens for authenticating server-to-server clients (e.g.
+// the MCP server) that have no browser session to read a cookie from. Only
+// a SHA-256 hash of the token is stored — the raw value is shown once, at
+// creation, and never persisted.
+model ApiToken {
+  id         String    @id
+  userId     String
+  name       String
+  tokenHash  String    @unique
+  lastUsedAt DateTime?
+  createdAt  DateTime  @default(now())
+  User       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@index([userId])
 }
 

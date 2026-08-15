@@ -5,13 +5,14 @@ import { prisma } from "@/app/lib/db";
 import { requireUser } from "@/app/lib/dal";
 import { excerpt } from "@/app/lib/text";
 import { ProfileForm } from "./profile-form";
+import { ApiTokensPanel } from "./api-tokens-panel";
 
 export const metadata: Metadata = { title: "Profile" };
 
 export default async function ProfilePage() {
   const session = await requireUser();
 
-  const [user, companies, departments, lessonsLearned] = await Promise.all([
+  const [user, companies, departments, lessonsLearned, apiTokens] = await Promise.all([
     prisma.user.findUnique({ where: { id: session.user.id } }),
     prisma.company.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
     prisma.department.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, companyId: true } }),
@@ -19,7 +20,12 @@ export default async function ProfilePage() {
       where: { isActive: true },
       orderBy: { createdAt: "desc" },
       take: 5,
-      select: { id: true, title: true, description: true },
+      select: { id: true, title: true, description: true, images: true },
+    }),
+    prisma.apiToken.findMany({
+      where: { userId: session.user.id },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, name: true, createdAt: true, lastUsedAt: true },
     }),
   ]);
 
@@ -82,9 +88,20 @@ export default async function ProfilePage() {
                     <ul className="list-group list-group-flush">
                       {lessonsLearned.map((entry) => (
                         <li key={entry.id} className="list-group-item">
-                          <Link href={`/lesson-learned/${entry.id}`} className="text-decoration-none text-reset">
-                            <div className="fw-medium">{entry.title}</div>
-                            <div className="text-secondary fs-7">{excerpt(entry.description, 80)}</div>
+                          <Link
+                            href={`/lesson-learned/${entry.id}`}
+                            className="d-flex gap-2 align-items-center text-decoration-none text-reset"
+                          >
+                            <img
+                              src={entry.images[0] || "/lesson-learned-placeholder.svg"}
+                              alt=""
+                              className="rounded flex-shrink-0"
+                              style={{ width: 48, height: 48, objectFit: "cover" }}
+                            />
+                            <div className="min-w-0">
+                              <div className="fw-medium text-truncate">{entry.title}</div>
+                              <div className="text-secondary fs-7">{excerpt(entry.description, 80)}</div>
+                            </div>
                           </Link>
                         </li>
                       ))}
@@ -95,6 +112,11 @@ export default async function ProfilePage() {
                   <Link href="/lesson-learned">View all →</Link>
                 </div>
               </div>
+            </div>
+          </div>
+          <div className="row">
+            <div className="col-12 col-lg-8">
+              <ApiTokensPanel tokens={apiTokens} />
             </div>
           </div>
         </div>

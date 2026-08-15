@@ -34,7 +34,7 @@ export type TicketFormState =
 // resets to 0001 when the month changes — e.g. TK2608140001, ...,
 // TK2608310042, then TK2609010001 on September 1st. The day still appears
 // in the number, but doesn't reset the counter on its own.
-async function generateTicketNumber(): Promise<string> {
+export async function generateTicketNumber(): Promise<string> {
   const now = new Date();
   const yy = String(now.getUTCFullYear()).slice(2);
   const mm = String(now.getUTCMonth() + 1).padStart(2, "0");

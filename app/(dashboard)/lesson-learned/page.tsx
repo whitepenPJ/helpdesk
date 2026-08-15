@@ -3,14 +3,17 @@ import Link from "next/link";
 import { prisma } from "@/app/lib/db";
 import { requireUser } from "@/app/lib/dal";
 import { excerpt } from "@/app/lib/text";
+import { formatDate } from "@/app/lib/date-format";
 import type { Prisma } from "@/app/generated/prisma/client";
 
 export const metadata: Metadata = { title: "Lesson Learned" };
 
-const PAGE_SIZE = 12;
+const PAGE_SIZE = 10;
+const PLACEHOLDER_IMAGE = "/lesson-learned-placeholder.svg";
 
 // Knowledge-base browsing, open to any signed-in role — admins who want the
 // full list including inactive entries already have /master/lesson-learned.
+// Styled as a blog: one big featured thumbnail per post, byline, excerpt.
 export default async function LessonLearnedBrowsePage({ searchParams }: PageProps<"/lesson-learned">) {
   await requireUser();
 
@@ -26,6 +29,7 @@ export default async function LessonLearnedBrowsePage({ searchParams }: PageProp
   const [entries, total] = await Promise.all([
     prisma.lessonLearned.findMany({
       where,
+      include: { User: { select: { name: true } } },
       orderBy: { createdAt: "desc" },
       skip: (currentPage - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
@@ -61,7 +65,7 @@ export default async function LessonLearnedBrowsePage({ searchParams }: PageProp
 
       <div className="app-content">
         <div className="container-fluid">
-          <form method="get" className="d-flex gap-2 mb-3">
+          <form method="get" className="d-flex gap-2 mb-4">
             <div className="input-group input-group-sm w-auto flex-grow-1">
               <span className="input-group-text">
                 <i className="bi bi-search" aria-hidden="true"></i>
@@ -80,23 +84,28 @@ export default async function LessonLearnedBrowsePage({ searchParams }: PageProp
             </button>
           </form>
 
-          <div className="row row-cols-1 row-cols-md-3 g-3">
+          <div className="row row-cols-1 row-cols-md-2 g-4">
             {entries.map((entry) => (
               <div className="col" key={entry.id}>
-                <Link href={`/lesson-learned/${entry.id}`} className="card h-100 text-decoration-none text-reset">
-                  {entry.images[0] ? (
-                    <img src={entry.images[0]} alt="" className="card-img-top" style={{ height: 160, objectFit: "cover" }} />
-                  ) : (
-                    <div
-                      className="card-img-top d-flex align-items-center justify-content-center bg-body-secondary"
-                      style={{ height: 160 }}
-                    >
-                      <i className="bi bi-lightbulb fs-1 text-secondary" aria-hidden="true"></i>
+                <Link href={`/lesson-learned/${entry.id}`} className="card h-100 text-decoration-none text-reset shadow-sm">
+                  <img
+                    src={entry.images[0] || PLACEHOLDER_IMAGE}
+                    alt=""
+                    className="card-img-top"
+                    style={{ aspectRatio: "16 / 9", objectFit: "cover" }}
+                  />
+                  <div className="card-body d-flex flex-column">
+                    <div className="text-secondary fs-7 mb-1">
+                      <i className="bi bi-calendar-event me-1" aria-hidden="true"></i>
+                      {formatDate(entry.createdAt)}
+                      <span className="mx-1">·</span>
+                      {entry.User.name}
                     </div>
-                  )}
-                  <div className="card-body">
-                    <div className="card-title fw-medium">{entry.title}</div>
-                    <p className="card-text text-secondary fs-7 mb-0">{excerpt(entry.description, 160)}</p>
+                    <div className="card-title h5 mb-2">{entry.title}</div>
+                    <p className="card-text text-secondary flex-grow-1">{excerpt(entry.description, 180)}</p>
+                    <span className="fw-medium text-primary">
+                      Read more <i className="bi bi-arrow-right" aria-hidden="true"></i>
+                    </span>
                   </div>
                 </Link>
               </div>
@@ -109,7 +118,7 @@ export default async function LessonLearnedBrowsePage({ searchParams }: PageProp
           </div>
 
           {totalPages > 1 && (
-            <nav aria-label="Pagination" className="mt-3">
+            <nav aria-label="Pagination" className="mt-4">
               <ul className="pagination pagination-sm justify-content-center mb-0">
                 {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
                   <li key={p} className={`page-item ${p === currentPage ? "active" : ""}`}>
