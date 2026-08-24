@@ -11,16 +11,14 @@ export default async function EditUserGroupPage({ params }: PageProps<"/master/u
   await requireAdmin();
 
   const { id } = await params;
+  // availableUsers is deliberately unfiltered by current membership — the
+  // form stages members client-side and itself excludes anyone already
+  // staged, so a current member removed (then not yet saved) needs to stay
+  // pickable again in the same session rather than being pre-excluded here.
   const [group, members, availableUsers] = await Promise.all([
     prisma.userGroup.findUnique({ where: { id } }),
     prisma.user.findMany({ where: { userGroupId: id }, orderBy: { name: "asc" }, select: { id: true, name: true, email: true } }),
-    prisma.user.findMany({
-      // Field-level `not` excludes NULL rows (SQL `<> id` semantics), which
-      // would drop every user with no group at all — spell out both cases.
-      where: { OR: [{ userGroupId: null }, { userGroupId: { not: id } }] },
-      orderBy: { name: "asc" },
-      select: { id: true, name: true, email: true },
-    }),
+    prisma.user.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, email: true } }),
   ]);
 
   if (!group) {

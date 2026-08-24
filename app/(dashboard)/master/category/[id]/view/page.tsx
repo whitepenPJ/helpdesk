@@ -11,11 +11,16 @@ export default async function ViewCategoryPage({ params }: PageProps<"/master/ca
   await requireAdmin();
 
   const { id } = await params;
-  const [category, admins] = await Promise.all([
+  const [category, admins, groups] = await Promise.all([
     prisma.category.findUnique({ where: { id } }),
     prisma.categoryAdmin.findMany({
       where: { categoryId: id },
       include: { User: { select: { id: true, name: true, email: true } } },
+      orderBy: { createdAt: "asc" },
+    }),
+    prisma.categoryUserGroup.findMany({
+      where: { categoryId: id },
+      include: { UserGroup: { select: { id: true, name: true } } },
       orderBy: { createdAt: "asc" },
     }),
   ]);
@@ -60,6 +65,7 @@ export default async function ViewCategoryPage({ params }: PageProps<"/master/ca
                 categoryId={category.id}
                 initialValues={{ name: category.name, isActive: category.isActive }}
                 responsibleUsers={admins.map((a) => a.User)}
+                responsibleGroups={groups.map((g) => g.UserGroup)}
               />
             </div>
           </div>

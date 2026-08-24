@@ -1,10 +1,12 @@
 "use client";
 
 import { useActionState, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { createDepartment, type DepartmentFormState } from "@/app/actions/companies";
 import { Select2Select } from "../../_components/select2-select";
 import { FormVendorScripts } from "../../_components/form-vendor-scripts";
+import { useMounted } from "../../_components/use-mounted";
 
 type Option = { value: string; label: string };
 
@@ -36,6 +38,11 @@ function AddDepartmentModal({
   const router = useRouter();
   const action = createDepartment.bind(null, companyId);
   const [state, formAction, pending] = useActionState<DepartmentFormState, FormData>(action, undefined);
+  // Portaled to <body> rather than rendered in place — this button lives
+  // inside the Edit Company page's own <form>, and a nested <form> in the
+  // DOM makes React unable to tell which form owns a submit ("A React form
+  // was unexpectedly submitted").
+  const mounted = useMounted();
 
   useEffect(() => {
     document.body.classList.add("modal-open");
@@ -49,7 +56,9 @@ function AddDepartmentModal({
     }
   }, [state, router, onClose]);
 
-  return (
+  if (!mounted) return null;
+
+  return createPortal(
     <>
       <FormVendorScripts />
       <div className="modal-backdrop fade show" onClick={onClose}></div>
@@ -85,9 +94,11 @@ function AddDepartmentModal({
               </div>
               <div className="modal-footer">
                 <button type="button" className="btn btn-secondary" onClick={onClose}>
+                  <i className="bi bi-x-lg me-1" aria-hidden="true"></i>
                   Cancel
                 </button>
                 <button type="submit" className="btn btn-primary" disabled={pending}>
+                  <i className="bi bi-plus-lg me-1" aria-hidden="true"></i>
                   {pending ? "Adding…" : "Add department"}
                 </button>
               </div>
@@ -95,6 +106,7 @@ function AddDepartmentModal({
           </div>
         </div>
       </div>
-    </>
+    </>,
+    document.body
   );
 }

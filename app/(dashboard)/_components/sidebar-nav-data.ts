@@ -47,6 +47,16 @@ export function buildSidebarNav({ role, ticketCount, assignedCount, approvalCoun
       href: "/tickets/assigned",
       ...(assignedCount > 0 ? { badge: String(assignedCount) } : {}),
     });
+    items.push({
+      icon: "bi-file-earmark-bar-graph",
+      label: "Report",
+      children: [
+        { icon: "bi-graph-up", label: "Main Report", href: "/transaction/report" },
+        { icon: "bi-person-lines-fill", label: "Assignee Report", href: "/transaction/report/assignee" },
+        { icon: "bi-tags", label: "Category Report", href: "/transaction/report/category" },
+        { icon: "bi-receipt", label: "Ticket Report", href: "/transaction/report/ticket" },
+      ],
+    });
   } else {
     if (role === "SUPERVISOR") {
       items.push({

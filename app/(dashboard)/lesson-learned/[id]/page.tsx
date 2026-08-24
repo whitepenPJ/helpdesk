@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/app/lib/db";
 import { requireUser } from "@/app/lib/dal";
 import { formatDate } from "@/app/lib/date-format";
+import { getAttachmentName } from "@/app/lib/attachments";
 
 export const metadata: Metadata = { title: "Lesson Learned" };
 
@@ -106,7 +107,7 @@ export default async function LessonLearnedDetailPage({ params }: PageProps<"/le
                           <li key={attachment}>
                             <a href={attachment} target="_blank" rel="noopener noreferrer">
                               <i className="bi bi-paperclip me-1" aria-hidden="true"></i>
-                              {attachment.split("/").pop()}
+                              {getAttachmentName(attachment)}
                             </a>
                           </li>
                         ))}

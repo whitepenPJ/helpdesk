@@ -85,6 +85,7 @@ export function ChatPanel({ ticketFormProps }: { ticketFormProps: TicketFormProp
                   {m.envelope?.offerTicket && !dismissedOffers.has(i) && showTicketFormAt !== i && (
                     <div className="mt-2 d-flex gap-2">
                       <button type="button" className="btn btn-sm btn-primary" onClick={() => setShowTicketFormAt(i)}>
+                        <i className="bi bi-ticket-perforated me-1" aria-hidden="true"></i>
                         Yes, create a ticket
                       </button>
                       <button
@@ -92,6 +93,7 @@ export function ChatPanel({ ticketFormProps }: { ticketFormProps: TicketFormProp
                         className="btn btn-sm btn-outline-secondary"
                         onClick={() => setDismissedOffers((prev) => new Set(prev).add(i))}
                       >
+                        <i className="bi bi-x-lg me-1" aria-hidden="true"></i>
                         No thanks
                       </button>
                     </div>
@@ -127,6 +129,7 @@ export function ChatPanel({ ticketFormProps }: { ticketFormProps: TicketFormProp
             disabled={pending}
           />
           <button type="submit" className="btn btn-primary" disabled={pending || !input.trim()}>
+            <i className="bi bi-send me-1" aria-hidden="true"></i>
             {pending ? "Thinking…" : "Send"}
           </button>
         </form>

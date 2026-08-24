@@ -7,6 +7,7 @@ import { DeleteButton } from "../_components/delete-button";
 import { SortableTh } from "../_components/sortable-th";
 import { Select2Select } from "../_components/select2-select";
 import { FormVendorScripts } from "../_components/form-vendor-scripts";
+import { Pagination } from "../_components/pagination";
 import { TicketSearchInput } from "./ticket-search-input";
 import type { SortDir } from "@/app/lib/table-sort";
 import { Prisma, type TicketStatus } from "@/app/generated/prisma/client";
@@ -17,7 +18,7 @@ export const metadata: Metadata = { title: "Tickets" };
 
 const PAGE_SIZE = 10;
 
-const SORT_COLUMNS = ["ticketNumber", "title", "category", "company", "priority", "status", "createdAt"] as const;
+const SORT_COLUMNS = ["ticketNumber", "title", "category", "company", "priority", "status", "transactionDate"] as const;
 type SortColumn = (typeof SORT_COLUMNS)[number];
 
 function buildOrderBy(sortBy: SortColumn, sortDir: SortDir): Prisma.TicketOrderByWithRelationInput {
@@ -35,7 +36,7 @@ const ticketInclude = { Category: true, Company: true, Department: true } satisf
 
 // Status sets behind each clickable summary card, below.
 const ACTIVE_STATUSES: TicketStatus[] = STATUSES.filter((s) => s !== "CLOSED");
-const ON_TRACK_STATUSES: TicketStatus[] = ["ASSIGNED", "RESOLVED", "VERIFIED"];
+const ON_TRACK_STATUSES: TicketStatus[] = ["ASSIGNED", "RESOLVED"];
 const WAITING_STATUSES: TicketStatus[] = ["WAITING"];
 const COMPLETED_STATUSES: TicketStatus[] = ["CLOSED"];
 
@@ -58,7 +59,7 @@ export default async function TicketsPage({ searchParams }: PageProps<"/tickets"
   const skip = (currentPage - 1) * PAGE_SIZE;
   const sortParam = typeof sort === "string" ? sort : undefined;
   const isSorted = sortParam !== undefined && (SORT_COLUMNS as readonly string[]).includes(sortParam);
-  const sortBy = isSorted ? (sortParam as SortColumn) : "createdAt";
+  const sortBy = isSorted ? (sortParam as SortColumn) : "transactionDate";
   const sortDir: SortDir = dir === "asc" ? "asc" : "desc";
   // Headers render as "unsorted" when the default status-priority order is
   // active, since that's not a plain single-column sort.
@@ -92,9 +93,9 @@ export default async function TicketsPage({ searchParams }: PageProps<"/tickets"
       prisma.ticket.count({ where }),
     ]);
   } else {
-    // Default order: VERIFIED, NEW, REOPENED, ASSIGNED, RESOLVED, WAITING,
-    // CLOSED, then most-recently-created first within each status —
-    // keep this in sync if the requested priority ever changes.
+    // Default order: NEW, REOPENED, ASSIGNED, RESOLVED, WAITING, CLOSED,
+    // then most-recent transaction date first within each status — keep
+    // this in sync if the requested priority ever changes.
     const ownerFragment = isAdmin ? Prisma.empty : Prisma.sql`AND "createdById" = ${session.user.id}`;
     const searchFragment = query
       ? Prisma.sql`AND (title ILIKE ${`%${query}%`} OR "ticketNumber" ILIKE ${`%${query}%`})`
@@ -109,15 +110,14 @@ export default async function TicketsPage({ searchParams }: PageProps<"/tickets"
         SELECT id FROM "Ticket"
         WHERE 1=1 ${ownerFragment} ${searchFragment} ${statusFragment}
         ORDER BY CASE status
-          WHEN 'VERIFIED' THEN 0
-          WHEN 'NEW' THEN 1
-          WHEN 'REOPENED' THEN 2
-          WHEN 'ASSIGNED' THEN 3
-          WHEN 'RESOLVED' THEN 4
-          WHEN 'WAITING' THEN 5
-          WHEN 'CLOSED' THEN 6
+          WHEN 'NEW' THEN 0
+          WHEN 'REOPENED' THEN 1
+          WHEN 'ASSIGNED' THEN 2
+          WHEN 'RESOLVED' THEN 3
+          WHEN 'WAITING' THEN 4
+          WHEN 'CLOSED' THEN 5
         END,
-        "createdAt" DESC
+        "transactionDate" DESC
         LIMIT ${PAGE_SIZE} OFFSET ${skip}
       `),
       prisma.ticket.count({ where }),
@@ -144,10 +144,10 @@ export default async function TicketsPage({ searchParams }: PageProps<"/tickets"
   >;
   const ticketTotal = statusGroups.reduce((sum, g) => sum + g._count._all, 0);
   const closedCount = statusCounts.CLOSED ?? 0;
-  // "On track" = actively progressing: assigned, resolved, or verified — as
-  // opposed to not-yet-picked-up (NEW/REOPENED), blocked (WAITING), or
-  // already done (CLOSED).
-  const onTrackCount = (statusCounts.ASSIGNED ?? 0) + (statusCounts.RESOLVED ?? 0) + (statusCounts.VERIFIED ?? 0);
+  // "On track" = actively progressing: assigned or resolved — as opposed to
+  // not-yet-picked-up (NEW/REOPENED), blocked (WAITING), or already done
+  // (CLOSED).
+  const onTrackCount = (statusCounts.ASSIGNED ?? 0) + (statusCounts.RESOLVED ?? 0);
   const waitingApprovalCount = statusCounts.WAITING ?? 0;
 
   // Each card doubles as a quick filter: clicking it sets the status filter
@@ -226,6 +226,7 @@ export default async function TicketsPage({ searchParams }: PageProps<"/tickets"
                           />
                         </div>
                         <button type="submit" className="btn btn-sm btn-outline-secondary">
+                          <i className="bi bi-funnel me-1" aria-hidden="true"></i>
                           Filter
                         </button>
                         <Link href="/tickets/new" className="btn btn-sm btn-primary">
@@ -247,7 +248,7 @@ export default async function TicketsPage({ searchParams }: PageProps<"/tickets"
                           <SortableTh label="Company / Department" column="company" pathname="/tickets" query={linkQuery} sortBy={activeSortBy} sortDir={sortDir} />
                           <SortableTh label="Priority" column="priority" pathname="/tickets" query={linkQuery} sortBy={activeSortBy} sortDir={sortDir} />
                           <SortableTh label="Status" column="status" pathname="/tickets" query={linkQuery} sortBy={activeSortBy} sortDir={sortDir} />
-                          <SortableTh label="Created" column="createdAt" pathname="/tickets" query={linkQuery} sortBy={activeSortBy} sortDir={sortDir} />
+                          <SortableTh label="Transaction Date" column="transactionDate" pathname="/tickets" query={linkQuery} sortBy={activeSortBy} sortDir={sortDir} />
                           <th className="text-end">Actions</th>
                         </tr>
                       </thead>
@@ -269,7 +270,7 @@ export default async function TicketsPage({ searchParams }: PageProps<"/tickets"
                             <td>
                               <span className={`badge ${STATUS_BADGE[ticket.status]}`}>{ticket.status}</span>
                             </td>
-                            <td>{formatDateTime(ticket.createdAt)}</td>
+                            <td>{formatDateTime(ticket.transactionDate)}</td>
                             <td className="text-center">
                               <div className="btn-group btn-group-sm">
                                 <Link
@@ -318,23 +319,14 @@ export default async function TicketsPage({ searchParams }: PageProps<"/tickets"
                     Showing {tickets.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1} to{" "}
                     {(currentPage - 1) * PAGE_SIZE + tickets.length} of {total} tickets
                   </div>
-                  {totalPages > 1 && (
-                    <ul className="pagination pagination-sm m-0 float-end">
-                      {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-                        <li key={p} className={`page-item ${p === currentPage ? "active" : ""}`}>
-                          <Link
-                            className="page-link"
-                            href={{
-                              pathname: "/tickets",
-                              query: { ...linkQuery, ...(isSorted ? { sort: sortBy, dir: sortDir } : {}), page: p },
-                            }}
-                          >
-                            {p}
-                          </Link>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
+                  <Pagination
+                    currentPage={currentPage}
+                    totalPages={totalPages}
+                    makeHref={(p) => ({
+                      pathname: "/tickets",
+                      query: { ...linkQuery, ...(isSorted ? { sort: sortBy, dir: sortDir } : {}), page: p },
+                    })}
+                  />
                 </div>
               </div>
             </div>

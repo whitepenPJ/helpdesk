@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { prisma } from "@/app/lib/db";
 import { requireAdmin } from "@/app/lib/dal";
 import { UserGroupForm } from "../user-group-form";
 
@@ -7,6 +8,11 @@ export const metadata: Metadata = { title: "New User Group" };
 
 export default async function NewUserGroupPage() {
   await requireAdmin();
+
+  const availableUsers = await prisma.user.findMany({
+    orderBy: { name: "asc" },
+    select: { id: true, name: true, email: true },
+  });
 
   return (
     <>
@@ -39,7 +45,10 @@ export default async function NewUserGroupPage() {
         <div className="container-fluid">
           <div className="row">
             <div className="col-12">
-              <UserGroupForm mode="create" />
+              <UserGroupForm
+                mode="create"
+                availableUsers={availableUsers.map((u) => ({ value: u.id, label: `${u.name} (${u.email})` }))}
+              />
             </div>
           </div>
         </div>

@@ -13,3 +13,14 @@ export function formatDate(date: Date): string {
 export function formatDateTime(date: Date): string {
   return `${formatDate(date)} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
+
+export function formatTime(date: Date): string {
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+// `<input type="datetime-local">` needs "YYYY-MM-DDTHH:mm" in the browser's
+// local time — toISOString() would shift to UTC and desync from what the
+// user sees on screen.
+export function toDateTimeLocalValue(date: Date): string {
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}

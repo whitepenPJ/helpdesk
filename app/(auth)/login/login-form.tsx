@@ -24,7 +24,7 @@ export function LoginForm({ callbackUrl }: { callbackUrl?: string }) {
           aria-describedby={state?.errors?.email ? "loginEmail-error" : undefined}
         />
         <div className="input-group-text">
-          <span className="bi bi-envelope"></span>
+          <span className="bi bi-envelope" aria-hidden="true"></span>
         </div>
       </div>
       {state?.errors?.email && (
@@ -86,7 +86,7 @@ export function LoginForm({ callbackUrl }: { callbackUrl?: string }) {
       <div className="row">
         <div className="col-12">
           <button type="submit" className="btn btn-primary w-100 mt-2" disabled={pending}>
-              <span className="bi bi-box-arrow-in-right me-1"></span>
+              <span className="bi bi-box-arrow-in-right me-1" aria-hidden="true"></span>
               {pending ? "Signing in…" : "Sign In"}
           </button>
         </div>

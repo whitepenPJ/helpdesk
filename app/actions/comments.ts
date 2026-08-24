@@ -21,11 +21,35 @@ export async function createComment(
 ): Promise<CommentFormState> {
   const session = await requireUser();
 
-  const ticket = await prisma.ticket.findUnique({ where: { id: ticketId }, select: { createdById: true } });
+  const ticket = await prisma.ticket.findUnique({
+    where: { id: ticketId },
+    select: {
+      createdById: true,
+      TicketAssignee: { select: { userId: true } },
+      TicketAssignedGroup: { select: { userGroupId: true } },
+    },
+  });
   if (!ticket) {
     return { errors: { message: ["Ticket not found."] } };
   }
-  if (session.user.role !== "ADMIN" && ticket.createdById !== session.user.id) {
+
+  // Same "who can see this ticket" rule as the non-admin visibility gate in
+  // ticket-detail-content.tsx — anyone who can view the ticket can comment
+  // on it: the owner, an individual assignee, a member of the assigned
+  // group, or the reviewing supervisor.
+  const isAdmin = session.user.role === "ADMIN";
+  const isOwner = ticket.createdById === session.user.id;
+  const isAssignee = ticket.TicketAssignee.some((a) => a.userId === session.user.id);
+  let canComment = isAdmin || isOwner || isAssignee;
+  if (!canComment) {
+    const me = await prisma.user.findUnique({ where: { id: session.user.id }, select: { userGroupId: true } });
+    canComment = Boolean(me?.userGroupId) && ticket.TicketAssignedGroup.some((g) => g.userGroupId === me?.userGroupId);
+  }
+  if (!canComment) {
+    const approval = await prisma.ticketApproval.findUnique({ where: { ticketId }, select: { supervisorId: true } });
+    canComment = approval?.supervisorId === session.user.id;
+  }
+  if (!canComment) {
     return { errors: { message: ["You don't have permission to comment on this ticket."] } };
   }
 
@@ -49,5 +73,7 @@ export async function createComment(
   });
 
   revalidatePath(`/tickets/${ticketId}`);
+  revalidatePath(`/tickets/assigned/${ticketId}`);
+  revalidatePath(`/transaction/ticket-management/${ticketId}`);
   return { success: true };
 }

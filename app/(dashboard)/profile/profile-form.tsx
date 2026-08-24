@@ -99,7 +99,7 @@ export function ProfileForm({
                 defaultValue={companyId}
                 placeholder="No company"
                 options={companies}
-                onChange={setCompanyId}
+                onChange={(value) => setCompanyId(value as string)}
               />
             </div>
             <div className="col-md-6">
@@ -120,6 +120,7 @@ export function ProfileForm({
         </div>
         <div className="card-footer">
           <button className="btn btn-primary" type="submit" disabled={pending}>
+            <i className="bi bi-check2 me-1" aria-hidden="true"></i>
             {pending ? "Saving…" : "Save changes"}
           </button>
         </div>

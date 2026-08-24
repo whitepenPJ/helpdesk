@@ -5,6 +5,7 @@ import { requireUser } from "@/app/lib/dal";
 import { excerpt } from "@/app/lib/text";
 import { formatDate } from "@/app/lib/date-format";
 import type { Prisma } from "@/app/generated/prisma/client";
+import { Pagination } from "../_components/pagination";
 
 export const metadata: Metadata = { title: "Lesson Learned" };
 
@@ -80,6 +81,7 @@ export default async function LessonLearnedBrowsePage({ searchParams }: PageProp
               />
             </div>
             <button type="submit" className="btn btn-sm btn-outline-secondary">
+              <i className="bi bi-search me-1" aria-hidden="true"></i>
               Search
             </button>
           </form>
@@ -119,18 +121,12 @@ export default async function LessonLearnedBrowsePage({ searchParams }: PageProp
 
           {totalPages > 1 && (
             <nav aria-label="Pagination" className="mt-4">
-              <ul className="pagination pagination-sm justify-content-center mb-0">
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-                  <li key={p} className={`page-item ${p === currentPage ? "active" : ""}`}>
-                    <Link
-                      className="page-link"
-                      href={{ pathname: "/lesson-learned", query: { ...(query ? { q: query } : {}), page: p } }}
-                    >
-                      {p}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
+              <Pagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                className="pagination pagination-sm justify-content-center mb-0"
+                makeHref={(p) => ({ pathname: "/lesson-learned", query: { ...(query ? { q: query } : {}), page: p } })}
+              />
             </nav>
           )}
         </div>

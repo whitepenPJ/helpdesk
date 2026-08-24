@@ -3,6 +3,8 @@
 import { useActionState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createComment, type CommentFormState } from "@/app/actions/comments";
+import { FormVendorScripts } from "../_components/form-vendor-scripts";
+import { BootstrapFileInput } from "../_components/bootstrap-file-input";
 
 export function AddCommentForm({ ticketId }: { ticketId: string }) {
   const router = useRouter();
@@ -24,6 +26,7 @@ export function AddCommentForm({ ticketId }: { ticketId: string }) {
 
   return (
     <form key={formKey} action={formAction} className="mt-3">
+      <FormVendorScripts select2={false} fileInput />
       <label htmlFor="message" className="form-label">
         Add a comment
       </label>
@@ -40,9 +43,10 @@ export function AddCommentForm({ ticketId }: { ticketId: string }) {
       <label htmlFor="comment-attachments" className="form-label mt-2">
         Attach File
       </label>
-      <input type="file" id="comment-attachments" name="attachments" className="form-control" multiple />
+      <BootstrapFileInput name="attachments" id="comment-attachments" />
 
       <button className="btn btn-primary btn-sm mt-2" type="submit" disabled={pending}>
+        <i className="bi bi-send me-1" aria-hidden="true"></i>
         {pending ? "Posting…" : "Post comment"}
       </button>
     </form>

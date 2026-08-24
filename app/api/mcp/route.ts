@@ -7,6 +7,7 @@ import { prisma } from "@/app/lib/db";
 import { authenticateMcpRequest, type McpAuthedUser } from "@/app/lib/mcp-auth";
 import { excerpt } from "@/app/lib/text";
 import { generateTicketNumber } from "@/app/actions/tickets";
+import { notifyTicketCreated } from "@/app/lib/notifications";
 import { STATUSES } from "@/app/(dashboard)/tickets/ticket-badges";
 import type { TicketStatus } from "@/app/generated/prisma/client";
 
@@ -132,6 +133,9 @@ function buildServer(user: McpAuthedUser): McpServer {
       await prisma.ticketHistory.create({
         data: { id: randomUUID(), ticketId, actorId: user.id, action: "Ticket created", newState: "NEW" },
       });
+      await notifyTicketCreated(ticketId).catch((error) =>
+        console.error("mcp create_ticket: notifyTicketCreated failed", error)
+      );
 
       return {
         content: [

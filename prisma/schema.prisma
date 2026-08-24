@@ -37,9 +37,9 @@ model User {
   Department_Department_supervisorIdToUser Department?        @relation("Department_supervisorIdToUser")
   LessonLearned                            LessonLearned[]
   PushSubscription                         PushSubscription[]
-  Ticket_Ticket_assigneeIdToUser           Ticket[]           @relation("Ticket_assigneeIdToUser")
   Ticket_Ticket_createdByIdToUser          Ticket[]           @relation("Ticket_createdByIdToUser")
   TicketApproval                           TicketApproval[]
+  TicketAssignee                           TicketAssignee[]
   TicketComment                            TicketComment[]
   TicketHistory                            TicketHistory[]
   Company                                  Company?           @relation(fields: [companyId], references: [id])
@@ -119,14 +119,15 @@ model ApiToken {
 }
 
 model Category {
-  id            String          @id
-  name          String          @unique
-  description   String?
-  isActive      Boolean         @default(true)
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime
-  CategoryAdmin CategoryAdmin[]
-  Ticket        Ticket[]
+  id                String              @id
+  name              String              @unique
+  description       String?
+  isActive          Boolean             @default(true)
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime
+  CategoryAdmin     CategoryAdmin[]
+  CategoryUserGroup CategoryUserGroup[]
+  Ticket            Ticket[]
 }
 
 model CategoryAdmin {
@@ -138,6 +139,17 @@ model CategoryAdmin {
   Category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
 
   @@unique([categoryId, adminId])
+}
+
+model CategoryUserGroup {
+  id          String    @id
+  categoryId  String
+  userGroupId String
+  createdAt   DateTime  @default(now())
+  UserGroup   UserGroup @relation(fields: [userGroupId], references: [id], onDelete: Cascade)
+  Category    Category  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([categoryId, userGroupId])
 }
 
 model Company {
@@ -202,8 +214,8 @@ model SystemSetting {
 }
 
 model Ticket {
-  id                            String          @id
-  ticketNumber                  String          @unique
+  id                            String                @id
+  ticketNumber                  String                @unique
   title                         String
   description                   String
   problem                       String?
@@ -212,10 +224,8 @@ model Ticket {
   companyId                     String
   departmentId                  String
   createdById                   String
-  assigneeId                    String?
-  assignedGroupId               String?
-  status                        TicketStatus    @default(NEW)
-  priority                      Priority        @default(MEDIUM)
+  status                        TicketStatus          @default(NEW)
+  priority                      Priority              @default(MEDIUM)
   telephone                     String?
   rating                        Rating?
   ratingComment                 String?
@@ -227,20 +237,22 @@ model Ticket {
   closedAt                      DateTime?
   resolvedAt                    DateTime?
   autoCloseDueDate              DateTime?
-  createdAt                     DateTime        @default(now())
+  // User-facing business date — shown/editable in place of createdAt (an
+  // audit timestamp) everywhere the ticket surfaces in the UI. Defaults to
+  // the moment of creation but is editable, unlike createdAt.
+  transactionDate               DateTime              @default(now())
+  createdAt                     DateTime              @default(now())
   updatedAt                     DateTime
-  UserGroup                     UserGroup?      @relation(fields: [assignedGroupId], references: [id])
-  User_Ticket_assigneeIdToUser  User?           @relation("Ticket_assigneeIdToUser", fields: [assigneeId], references: [id])
-  Category                      Category        @relation(fields: [categoryId], references: [id])
-  Company                       Company         @relation(fields: [companyId], references: [id])
-  User_Ticket_createdByIdToUser User            @relation("Ticket_createdByIdToUser", fields: [createdById], references: [id])
-  Department                    Department      @relation(fields: [departmentId], references: [id])
+  Category                      Category              @relation(fields: [categoryId], references: [id])
+  Company                       Company               @relation(fields: [companyId], references: [id])
+  User_Ticket_createdByIdToUser User                  @relation("Ticket_createdByIdToUser", fields: [createdById], references: [id])
+  Department                    Department            @relation(fields: [departmentId], references: [id])
   TicketApproval                TicketApproval?
+  TicketAssignee                TicketAssignee[]
+  TicketAssignedGroup           TicketAssignedGroup[]
   TicketComment                 TicketComment[]
   TicketHistory                 TicketHistory[]
 
-  @@index([assignedGroupId])
-  @@index([assigneeId])
   @@index([autoCloseDueDate])
   @@index([companyId, departmentId])
   @@index([createdById])
@@ -262,6 +274,32 @@ model TicketApproval {
   updatedAt      DateTime
   User           User           @relation(fields: [supervisorId], references: [id])
   Ticket         Ticket         @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+}
+
+model TicketAssignee {
+  id         String   @id
+  ticketId   String
+  userId     String
+  assignedAt DateTime @default(now())
+  User       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  Ticket     Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@unique([ticketId, userId])
+  @@index([ticketId])
+  @@index([userId])
+}
+
+model TicketAssignedGroup {
+  id          String    @id
+  ticketId    String
+  userGroupId String
+  assignedAt  DateTime  @default(now())
+  UserGroup   UserGroup @relation(fields: [userGroupId], references: [id], onDelete: Cascade)
+  Ticket      Ticket    @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@unique([ticketId, userGroupId])
+  @@index([ticketId])
+  @@index([userGroupId])
 }
 
 model TicketComment {
@@ -292,14 +330,15 @@ model TicketHistory {
 }
 
 model UserGroup {
-  id          String   @id
-  name        String   @unique
-  description String?
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime
-  Ticket      Ticket[]
-  User        User[]
+  id                  String                @id
+  name                String                @unique
+  description         String?
+  isActive            Boolean               @default(true)
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime
+  CategoryUserGroup   CategoryUserGroup[]
+  TicketAssignedGroup TicketAssignedGroup[]
+  User                User[]
 }
 
 enum Role {
@@ -331,7 +370,6 @@ enum TicketStatus {
   NEW
   ASSIGNED
   RESOLVED
-  VERIFIED
   REOPENED
   CLOSED
   WAITING

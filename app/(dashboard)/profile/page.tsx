@@ -62,7 +62,7 @@ export default async function ProfilePage() {
       <div className="app-content">
         <div className="container-fluid">
           <div className="row">
-            <div className="col-12 col-lg-8">
+            <div className="col-12">
               <ProfileForm
                 email={user.email}
                 role={user.role}
@@ -76,46 +76,9 @@ export default async function ProfilePage() {
                 }}
               />
             </div>
-            <div className="col-12 col-lg-4">
-              <div className="card card-outline mb-4">
-                <div className="card-header">
-                  <div className="card-title">Lesson Learned</div>
-                </div>
-                <div className="card-body p-0">
-                  {lessonsLearned.length === 0 ? (
-                    <p className="text-secondary p-3 mb-0">No lesson learned entries yet.</p>
-                  ) : (
-                    <ul className="list-group list-group-flush">
-                      {lessonsLearned.map((entry) => (
-                        <li key={entry.id} className="list-group-item">
-                          <Link
-                            href={`/lesson-learned/${entry.id}`}
-                            className="d-flex gap-2 align-items-center text-decoration-none text-reset"
-                          >
-                            <img
-                              src={entry.images[0] || "/lesson-learned-placeholder.svg"}
-                              alt=""
-                              className="rounded flex-shrink-0"
-                              style={{ width: 48, height: 48, objectFit: "cover" }}
-                            />
-                            <div className="min-w-0">
-                              <div className="fw-medium text-truncate">{entry.title}</div>
-                              <div className="text-secondary fs-7">{excerpt(entry.description, 80)}</div>
-                            </div>
-                          </Link>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-                <div className="card-footer text-center">
-                  <Link href="/lesson-learned">View all →</Link>
-                </div>
-              </div>
-            </div>
           </div>
           <div className="row">
-            <div className="col-12 col-lg-8">
+            <div className="col-12">
               <ApiTokensPanel tokens={apiTokens} />
             </div>
           </div>

@@ -11,6 +11,7 @@ export function CloseTicketButton({ ticketId }: { ticketId: string }) {
   return (
     <>
       <button type="button" className="btn btn-sm btn-primary" onClick={() => setOpen(true)}>
+        <i className="bi bi-x-circle me-1" aria-hidden="true"></i>
         Close Ticket
       </button>
       {open && <CloseTicketModal ticketId={ticketId} onClose={() => setOpen(false)} />}
@@ -77,9 +78,11 @@ function CloseTicketModal({ ticketId, onClose }: { ticketId: string; onClose: ()
               </div>
               <div className="modal-footer">
                 <button type="button" className="btn btn-secondary" onClick={onClose} disabled={pending}>
+                  <i className="bi bi-x-lg me-1" aria-hidden="true"></i>
                   Cancel
                 </button>
                 <button type="submit" className="btn btn-primary" disabled={pending || !score}>
+                  <i className="bi bi-check2-circle me-1" aria-hidden="true"></i>
                   {pending ? "Saving…" : "Submit & Close"}
                 </button>
               </div>

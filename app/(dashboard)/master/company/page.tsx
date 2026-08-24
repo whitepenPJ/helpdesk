@@ -5,6 +5,7 @@ import { requireAdmin } from "@/app/lib/dal";
 import { deleteCompany } from "@/app/actions/companies";
 import { DeleteButton } from "../../_components/delete-button";
 import { SortableTh } from "../../_components/sortable-th";
+import { Pagination } from "../../_components/pagination";
 import { parseSort, type SortDir } from "@/app/lib/table-sort";
 import type { Prisma } from "@/app/generated/prisma/client";
 
@@ -114,6 +115,7 @@ export default async function CompaniesPage({ searchParams }: PageProps<"/master
                           />
                         </div>
                         <button type="submit" className="btn btn-sm btn-outline-secondary">
+                          <i className="bi bi-search me-1" aria-hidden="true"></i>
                           Search
                         </button>
                         <Link href="/master/company/new" className="btn btn-sm btn-primary">
@@ -194,20 +196,11 @@ export default async function CompaniesPage({ searchParams }: PageProps<"/master
                     Showing {companies.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1} to{" "}
                     {(currentPage - 1) * PAGE_SIZE + companies.length} of {total} companies
                   </div>
-                  {totalPages > 1 && (
-                    <ul className="pagination pagination-sm m-0 float-end">
-                      {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-                        <li key={p} className={`page-item ${p === currentPage ? "active" : ""}`}>
-                          <Link
-                            className="page-link"
-                            href={{ pathname: "/master/company", query: { ...linkQuery, sort: sortBy, dir: sortDir, page: p } }}
-                          >
-                            {p}
-                          </Link>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
+                  <Pagination
+                    currentPage={currentPage}
+                    totalPages={totalPages}
+                    makeHref={(p) => ({ pathname: "/master/company", query: { ...linkQuery, sort: sortBy, dir: sortDir, page: p } })}
+                  />
                 </div>
               </div>
             </div>

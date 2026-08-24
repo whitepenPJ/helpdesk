@@ -6,7 +6,7 @@ import { editTicket, type TicketFormState } from "@/app/actions/tickets";
 import { Select2Select } from "../../_components/select2-select";
 import { FormVendorScripts } from "../../_components/form-vendor-scripts";
 import { STATUS_BADGE } from "../ticket-badges";
-import { formatDateTime } from "@/app/lib/date-format";
+import { toDateTimeLocalValue } from "@/app/lib/date-format";
 
 type Option = { value: string; label: string };
 
@@ -18,7 +18,6 @@ function FieldError({ messages }: { messages?: string[] }) {
 export function EditTicketForm({
   ticketId,
   ticketNumber,
-  createdAt,
   categories,
   companies,
   departments,
@@ -26,7 +25,6 @@ export function EditTicketForm({
 }: {
   ticketId: string;
   ticketNumber: string;
-  createdAt: Date;
   categories: Option[];
   companies: Option[];
   departments: (Option & { companyId: string })[];
@@ -37,12 +35,15 @@ export function EditTicketForm({
     telephone: string;
     companyId: string;
     departmentId: string;
+    transactionDate: Date;
   };
 }) {
   const editTicketWithId = editTicket.bind(null, ticketId);
   const [state, formAction, pending] = useActionState<TicketFormState, FormData>(editTicketWithId, undefined);
 
   const values = state?.values ?? initialValues;
+  const transactionDateValue =
+    typeof values.transactionDate === "string" ? values.transactionDate : toDateTimeLocalValue(values.transactionDate);
 
   const [companyId, setCompanyId] = useState(values.companyId);
   const departmentOptions = departments
@@ -58,15 +59,9 @@ export function EditTicketForm({
       <div className="card-header">
         <div className="d-flex flex-wrap justify-content-between align-items-center gap-2">
           <div className="card-title mb-0">Ticket #: {ticketNumber}</div>
-          <div className="d-flex flex-wrap align-items-center gap-3 fs-7 text-secondary">
-            <span>
-              <i className="bi bi-calendar-event me-1" aria-hidden="true"></i>
-              Created: {formatDateTime(createdAt)}
-            </span>
-            <span className="d-flex align-items-center gap-1">
-              Status: <span className={`badge ${STATUS_BADGE.NEW}`}>NEW</span>
-            </span>
-          </div>
+          <span className="d-flex align-items-center gap-1 fs-7 text-secondary">
+            Status: <span className={`badge ${STATUS_BADGE.NEW}`}>NEW</span>
+          </span>
         </div>
       </div>
       <form key={formKey} action={formAction}>
@@ -133,6 +128,20 @@ export function EditTicketForm({
               />
               <FieldError messages={state?.errors?.telephone} />
             </div>
+            <div className="col-md-6">
+              <label htmlFor="transactionDate" className="form-label">
+                Transaction Date
+              </label>
+              <input
+                type="datetime-local"
+                id="transactionDate"
+                name="transactionDate"
+                className="form-control"
+                defaultValue={transactionDateValue}
+                required
+              />
+              <FieldError messages={state?.errors?.transactionDate} />
+            </div>
 
             <div className="col-md-6">
               <label htmlFor="companyId" className="form-label">
@@ -144,7 +153,7 @@ export function EditTicketForm({
                 required
                 placeholder="Select a company"
                 options={companies}
-                onChange={setCompanyId}
+                onChange={(value) => setCompanyId(value as string)}
               />
               <FieldError messages={state?.errors?.companyId} />
             </div>
@@ -165,11 +174,13 @@ export function EditTicketForm({
             </div>
           </div>
         </div>
-        <div className="card-footer d-flex gap-2">
+        <div className="card-footer d-flex gap-2 justify-content-end">
           <button className="btn btn-primary" type="submit" disabled={pending}>
+            <i className="bi bi-check2 me-1" aria-hidden="true"></i>
             {pending ? "Saving…" : "Save changes"}
           </button>
           <Link href={`/tickets/${ticketId}`} className="btn btn-secondary">
+            <i className="bi bi-x-lg me-1" aria-hidden="true"></i>
             Cancel
           </Link>
         </div>

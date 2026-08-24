@@ -11,7 +11,7 @@ export default async function EditCategoryPage({ params }: PageProps<"/master/ca
   await requireAdmin();
 
   const { id } = await params;
-  const [category, admins, allUsers] = await Promise.all([
+  const [category, admins, allUsers, groups, allGroups] = await Promise.all([
     prisma.category.findUnique({ where: { id } }),
     prisma.categoryAdmin.findMany({
       where: { categoryId: id },
@@ -19,13 +19,17 @@ export default async function EditCategoryPage({ params }: PageProps<"/master/ca
       orderBy: { createdAt: "asc" },
     }),
     prisma.user.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, email: true } }),
+    prisma.categoryUserGroup.findMany({
+      where: { categoryId: id },
+      include: { UserGroup: { select: { id: true, name: true } } },
+      orderBy: { createdAt: "asc" },
+    }),
+    prisma.userGroup.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
   ]);
 
   if (!category) {
     notFound();
   }
-
-  const responsibleIds = new Set(admins.map((a) => a.adminId));
 
   return (
     <>
@@ -63,9 +67,9 @@ export default async function EditCategoryPage({ params }: PageProps<"/master/ca
                 categoryId={category.id}
                 initialValues={{ name: category.name, isActive: category.isActive }}
                 responsibleUsers={admins.map((a) => a.User)}
-                availableUsers={allUsers
-                  .filter((u) => !responsibleIds.has(u.id))
-                  .map((u) => ({ value: u.id, label: `${u.name} (${u.email})` }))}
+                availableUsers={allUsers.map((u) => ({ value: u.id, label: `${u.name} (${u.email})` }))}
+                responsibleGroups={groups.map((g) => g.UserGroup)}
+                availableGroups={allGroups.map((g) => ({ value: g.id, label: g.name }))}
               />
             </div>
           </div>

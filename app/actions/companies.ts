@@ -154,3 +154,34 @@ export async function createDepartment(
   revalidatePath(`/master/company/${companyId}/edit`);
   return { success: true };
 }
+
+export type UpdateDepartmentSupervisorState = { error?: string; success?: boolean } | undefined;
+
+export async function updateDepartmentSupervisor(
+  departmentId: string,
+  _prevState: UpdateDepartmentSupervisorState,
+  formData: FormData
+): Promise<UpdateDepartmentSupervisorState> {
+  await requireAdmin();
+
+  const department = await prisma.department.findUnique({ where: { id: departmentId } });
+  if (!department) return { error: "Department not found." };
+
+  const supervisorId = formData.get("supervisorId");
+  const supervisorIdValue = typeof supervisorId === "string" && supervisorId ? supervisorId : null;
+
+  if (supervisorIdValue) {
+    const existingSupervisor = await prisma.department.findUnique({ where: { supervisorId: supervisorIdValue } });
+    if (existingSupervisor && existingSupervisor.id !== departmentId) {
+      return { error: "This supervisor already manages another department." };
+    }
+  }
+
+  await prisma.department.update({
+    where: { id: departmentId },
+    data: { supervisorId: supervisorIdValue, updatedAt: new Date() },
+  });
+
+  revalidatePath(`/master/company/${department.companyId}/edit`);
+  return { success: true };
+}

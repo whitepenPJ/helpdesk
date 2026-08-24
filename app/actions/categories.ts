@@ -6,10 +6,17 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/app/lib/db";
 import { requireAdmin } from "@/app/lib/dal";
 
+export type StagedMemberInput = { id: string; label: string };
+
 export type CategoryFormState =
   | {
       errors?: Record<string, string[]>;
-      values?: { name: string; isActive: boolean };
+      values?: {
+        name: string;
+        isActive: boolean;
+        responsibleUsers?: StagedMemberInput[];
+        responsibleGroups?: StagedMemberInput[];
+      };
     }
   | undefined;
 
@@ -21,11 +28,28 @@ function readFields(formData: FormData) {
   };
 }
 
+// The Create form stages responsible users/groups client-side (no
+// categoryId exists yet to attach them to) and carries each staged list as
+// one JSON hidden field — see staged-picker-button.tsx and category-form.tsx.
+function parseStagedMembers(formData: FormData, key: string): StagedMemberInput[] {
+  const raw = formData.get(key);
+  if (typeof raw !== "string" || !raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((m): m is StagedMemberInput => m && typeof m === "object" && typeof m.id === "string");
+  } catch {
+    return [];
+  }
+}
+
 export async function createCategory(_prevState: CategoryFormState, formData: FormData): Promise<CategoryFormState> {
   await requireAdmin();
 
   const { name, isActive } = readFields(formData);
-  const values = { name: typeof name === "string" ? name : "", isActive };
+  const responsibleUsers = parseStagedMembers(formData, "responsibleUsers");
+  const responsibleGroups = parseStagedMembers(formData, "responsibleGroups");
+  const values = { name: typeof name === "string" ? name : "", isActive, responsibleUsers, responsibleGroups };
   const errors: Record<string, string[]> = {};
 
   if (typeof name !== "string" || name.trim().length === 0) {
@@ -41,14 +65,27 @@ export async function createCategory(_prevState: CategoryFormState, formData: Fo
     return { errors: { name: ["A category with this name already exists."] }, values };
   }
 
-  await prisma.category.create({
-    data: {
-      id: randomUUID(),
-      name: (name as string).trim(),
-      isActive,
-      updatedAt: new Date(),
-    },
-  });
+  const categoryId = randomUUID();
+  const now = new Date();
+  await prisma.$transaction([
+    prisma.category.create({
+      data: { id: categoryId, name: (name as string).trim(), isActive, updatedAt: now },
+    }),
+    ...(responsibleUsers.length
+      ? [
+          prisma.categoryAdmin.createMany({
+            data: responsibleUsers.map((u) => ({ id: randomUUID(), categoryId, adminId: u.id })),
+          }),
+        ]
+      : []),
+    ...(responsibleGroups.length
+      ? [
+          prisma.categoryUserGroup.createMany({
+            data: responsibleGroups.map((g) => ({ id: randomUUID(), categoryId, userGroupId: g.id })),
+          }),
+        ]
+      : []),
+  ]);
 
   revalidatePath("/master/category");
   redirect("/master/category");
@@ -62,7 +99,9 @@ export async function updateCategory(
   await requireAdmin();
 
   const { name, isActive } = readFields(formData);
-  const values = { name: typeof name === "string" ? name : "", isActive };
+  const responsibleUsers = parseStagedMembers(formData, "responsibleUsers");
+  const responsibleGroups = parseStagedMembers(formData, "responsibleGroups");
+  const values = { name: typeof name === "string" ? name : "", isActive, responsibleUsers, responsibleGroups };
   const errors: Record<string, string[]> = {};
 
   if (typeof name !== "string" || name.trim().length === 0) {
@@ -78,14 +117,32 @@ export async function updateCategory(
     return { errors: { name: ["A category with this name already exists."] }, values };
   }
 
-  await prisma.category.update({
-    where: { id },
-    data: {
-      name: (name as string).trim(),
-      isActive,
-      updatedAt: new Date(),
-    },
-  });
+  const now = new Date();
+  await prisma.$transaction([
+    prisma.category.update({
+      where: { id },
+      data: { name: (name as string).trim(), isActive, updatedAt: now },
+    }),
+    // Replace wholesale to match the staged lists exactly, same simplicity
+    // trade-off as the ticket assignment reconciliation elsewhere in this
+    // app: delete everything for this category, recreate from what's staged.
+    prisma.categoryAdmin.deleteMany({ where: { categoryId: id } }),
+    prisma.categoryUserGroup.deleteMany({ where: { categoryId: id } }),
+    ...(responsibleUsers.length
+      ? [
+          prisma.categoryAdmin.createMany({
+            data: responsibleUsers.map((u) => ({ id: randomUUID(), categoryId: id, adminId: u.id })),
+          }),
+        ]
+      : []),
+    ...(responsibleGroups.length
+      ? [
+          prisma.categoryUserGroup.createMany({
+            data: responsibleGroups.map((g) => ({ id: randomUUID(), categoryId: id, userGroupId: g.id })),
+          }),
+        ]
+      : []),
+  ]);
 
   revalidatePath("/master/category");
   redirect("/master/category");
@@ -105,43 +162,9 @@ export async function deleteCategory(id: string) {
   redirect("/master/category");
 }
 
-export type AddCategoryAdminState =
-  | {
-      errors?: Record<string, string[]>;
-      success?: boolean;
-    }
-  | undefined;
-
-export async function addCategoryAdmin(
-  categoryId: string,
-  _prevState: AddCategoryAdminState,
-  formData: FormData
-): Promise<AddCategoryAdminState> {
+export async function removeCategoryUserGroup(categoryId: string, userGroupId: string) {
   await requireAdmin();
 
-  const userId = formData.get("userId");
-  if (typeof userId !== "string" || !userId) {
-    return { errors: { userId: ["Select a user."] } };
-  }
-
-  const existing = await prisma.categoryAdmin.findUnique({
-    where: { categoryId_adminId: { categoryId, adminId: userId } },
-  });
-  if (existing) {
-    return { errors: { userId: ["This user is already responsible for this category."] } };
-  }
-
-  await prisma.categoryAdmin.create({
-    data: { id: randomUUID(), categoryId, adminId: userId },
-  });
-
-  revalidatePath(`/master/category/${categoryId}/edit`);
-  return { success: true };
-}
-
-export async function removeCategoryAdmin(categoryId: string, userId: string) {
-  await requireAdmin();
-
-  await prisma.categoryAdmin.deleteMany({ where: { categoryId, adminId: userId } });
+  await prisma.categoryUserGroup.deleteMany({ where: { categoryId, userGroupId } });
   revalidatePath(`/master/category/${categoryId}/edit`);
 }

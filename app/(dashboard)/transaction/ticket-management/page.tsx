@@ -5,8 +5,11 @@ import { requireAdmin } from "@/app/lib/dal";
 import { formatAssignment } from "@/app/lib/ticket-format";
 import { Prisma } from "@/app/generated/prisma/client";
 import { SortableTh } from "../../_components/sortable-th";
+import { Pagination } from "../../_components/pagination";
+import { FormVendorScripts } from "../../_components/form-vendor-scripts";
 import { type SortDir } from "@/app/lib/table-sort";
-import { STATUS_BADGE, PRIORITY_BADGE } from "../../tickets/ticket-badges";
+import { STATUS_BADGE, PRIORITY_BADGE, STATUSES } from "../../tickets/ticket-badges";
+import { STATUS_FILTER_PRESETS } from "@/app/lib/ticket-status-groups";
 import { formatDateTime } from "@/app/lib/date-format";
 import { TicketRowActions } from "./_components/ticket-row-actions";
 
@@ -19,18 +22,24 @@ const PAGE_SIZE = 15;
 // ranking is done below in a raw ORDER BY CASE rather than by reordering the
 // live enum — keep this in sync with STATUSES in
 // ../../tickets/ticket-badges.ts: NEW, WAITING, REOPENED, RESOLVED,
-// ASSIGNED, VERIFIED, CLOSED, then createdAt ASC. Clicking a column header
+// ASSIGNED, CLOSED, then transactionDate ASC. Clicking a column header
 // (below) overrides this default with a plain column sort instead.
 
-const SORT_COLUMNS = ["ticketNumber", "title", "company", "priority", "createdAt", "status", "assignee"] as const;
+const SORT_COLUMNS = ["ticketNumber", "title", "company", "priority", "transactionDate", "status"] as const;
 type SortColumn = (typeof SORT_COLUMNS)[number];
 
-function buildOrderBy(sortBy: SortColumn, sortDir: SortDir): Prisma.TicketOrderByWithRelationInput {
+function buildOrderBy(
+  sortBy: SortColumn,
+  sortDir: SortDir
+): Prisma.TicketOrderByWithRelationInput | Prisma.TicketOrderByWithRelationInput[] {
   switch (sortBy) {
     case "company":
       return { Company: { name: sortDir } };
-    case "assignee":
-      return { User_Ticket_assigneeIdToUser: { name: sortDir } };
+    // Status ascending already starts with NEW (the enum's declared order —
+    // see schema.prisma's TicketStatus) — transactionDate asc breaks ties
+    // within the same status so same-status tickets read oldest-first.
+    case "status":
+      return [{ status: sortDir }, { transactionDate: "asc" }];
     default:
       return { [sortBy]: sortDir };
   }
@@ -39,39 +48,53 @@ function buildOrderBy(sortBy: SortColumn, sortDir: SortDir): Prisma.TicketOrderB
 export default async function TicketManagementPage({ searchParams }: PageProps<"/transaction/ticket-management">) {
   await requireAdmin();
 
-  const { q, page, sort, dir } = await searchParams;
+  const { q, page, sort, dir, status, unassigned } = await searchParams;
   const query = typeof q === "string" ? q.trim() : "";
   const currentPage = Math.max(1, Number(page) || 1);
   const skip = (currentPage - 1) * PAGE_SIZE;
   const sortParam = typeof sort === "string" ? sort : undefined;
   const isSorted = sortParam !== undefined && (SORT_COLUMNS as readonly string[]).includes(sortParam);
-  const sortBy = isSorted ? (sortParam as SortColumn) : "createdAt";
+  const sortBy = isSorted ? (sortParam as SortColumn) : "transactionDate";
   const sortDir: SortDir = dir === "asc" ? "asc" : "desc";
   // Headers render as "unsorted" when the default status-priority order is
   // active, since that's not a plain single-column sort.
   const activeSortBy = isSorted ? sortBy : "";
 
-  const where: Prisma.TicketWhereInput = query
-    ? {
-        OR: [
-          { title: { contains: query, mode: "insensitive" } },
-          { ticketNumber: { contains: query, mode: "insensitive" } },
-        ],
-      }
-    : {};
+  // Comma-separated status list, e.g. from the dashboard's KPI tiles
+  // (?status=NEW,ASSIGNED,REOPENED) or the Status dropdown below — see
+  // app/lib/ticket-status-groups.ts for the shared presets.
+  const statusParam = typeof status === "string" ? status : "";
+  const statusList = statusParam
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s): s is (typeof STATUSES)[number] => (STATUSES as readonly string[]).includes(s));
+  const unassignedOnly = unassigned === "1";
+
+  const where: Prisma.TicketWhereInput = {
+    ...(query
+      ? {
+          OR: [
+            { title: { contains: query, mode: "insensitive" } },
+            { ticketNumber: { contains: query, mode: "insensitive" } },
+          ],
+        }
+      : {}),
+    ...(statusList.length > 0 ? { status: { in: statusList } } : {}),
+    ...(unassignedOnly ? { TicketAssignee: { none: {} } } : {}),
+  };
 
   const ticketInclude = {
     Category: true,
     Company: true,
     Department: { include: { User_Department_supervisorIdToUser: { select: { name: true, email: true } } } },
     User_Ticket_createdByIdToUser: { select: { name: true, email: true } },
-    User_Ticket_assigneeIdToUser: { select: { name: true } },
-    UserGroup: { select: { name: true } },
+    TicketAssignee: { select: { User: { select: { id: true, name: true } } } },
+    TicketAssignedGroup: { select: { UserGroup: { select: { id: true, name: true } } } },
   } satisfies Prisma.TicketInclude;
 
   const [assignees, groups] = await Promise.all([
     prisma.user.findMany({
-      where: { role: { in: ["ADMIN", "SUPERVISOR"] }, status: "ACTIVE" },
+      where: { status: "ACTIVE" },
       select: { id: true, name: true },
       orderBy: { name: "asc" },
     }),
@@ -100,21 +123,25 @@ export default async function TicketManagementPage({ searchParams }: PageProps<"
     const searchFragment = query
       ? Prisma.sql`AND (title ILIKE ${`%${query}%`} OR "ticketNumber" ILIKE ${`%${query}%`})`
       : Prisma.empty;
+    const statusFragment =
+      statusList.length > 0 ? Prisma.sql`AND status = ANY(${statusList}::"TicketStatus"[])` : Prisma.empty;
+    const unassignedFragment = unassignedOnly
+      ? Prisma.sql`AND NOT EXISTS (SELECT 1 FROM "TicketAssignee" ta WHERE ta."ticketId" = "Ticket".id)`
+      : Prisma.empty;
 
     const [idRows, count] = await Promise.all([
       prisma.$queryRaw<{ id: string }[]>(Prisma.sql`
         SELECT id FROM "Ticket"
-        WHERE 1=1 ${searchFragment}
+        WHERE 1=1 ${searchFragment} ${statusFragment} ${unassignedFragment}
         ORDER BY CASE status
           WHEN 'NEW' THEN 0
           WHEN 'WAITING' THEN 1
           WHEN 'REOPENED' THEN 2
           WHEN 'RESOLVED' THEN 3
           WHEN 'ASSIGNED' THEN 4
-          WHEN 'VERIFIED' THEN 5
-          WHEN 'CLOSED' THEN 6
+          WHEN 'CLOSED' THEN 5
         END,
-        "createdAt" ASC
+        "transactionDate" ASC
         LIMIT ${PAGE_SIZE} OFFSET ${skip}
       `),
       prisma.ticket.count({ where }),
@@ -128,10 +155,16 @@ export default async function TicketManagementPage({ searchParams }: PageProps<"
   }
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const linkQuery = query ? { q: query } : {};
+  const linkQuery = {
+    ...(query ? { q: query } : {}),
+    ...(statusParam ? { status: statusParam } : {}),
+    ...(unassignedOnly ? { unassigned: "1" } : {}),
+  };
+  const hasActiveFilter = Boolean(query || statusParam || unassignedOnly);
 
   return (
     <>
+      <FormVendorScripts />
       <div className="app-content-header">
         <div className="container-fluid">
           <div className="row">
@@ -175,9 +208,48 @@ export default async function TicketManagementPage({ searchParams }: PageProps<"
                         aria-label="Search tickets"
                       />
                     </div>
+                    <select
+                      name="status"
+                      defaultValue={statusParam}
+                      className="form-select form-select-sm w-auto"
+                      aria-label="Filter by status"
+                    >
+                      <option value="">All Statuses</option>
+                      {STATUS_FILTER_PRESETS.map((preset) => (
+                        <option key={preset.statuses.join(",")} value={preset.statuses.join(",")}>
+                          {preset.label}
+                        </option>
+                      ))}
+                      <optgroup label="Single status">
+                        {STATUSES.map((s) => (
+                          <option key={s} value={s}>
+                            {s}
+                          </option>
+                        ))}
+                      </optgroup>
+                    </select>
+                    <div className="form-check d-flex align-items-center gap-1 mb-0">
+                      <input
+                        className="form-check-input mt-0"
+                        type="checkbox"
+                        id="unassigned-filter"
+                        name="unassigned"
+                        value="1"
+                        defaultChecked={unassignedOnly}
+                      />
+                      <label className="form-check-label fs-7" htmlFor="unassigned-filter">
+                        Unassigned only
+                      </label>
+                    </div>
                     <button type="submit" className="btn btn-sm btn-outline-secondary">
+                      <i className="bi bi-funnel me-1" aria-hidden="true"></i>
                       Filter
                     </button>
+                    {hasActiveFilter && (
+                      <Link href="/transaction/ticket-management" className="btn btn-sm btn-outline-danger">
+                        Clear filters
+                      </Link>
+                    )}
                   </form>
                 </div>
                 <div className="card-body p-0">
@@ -189,9 +261,9 @@ export default async function TicketManagementPage({ searchParams }: PageProps<"
                           <SortableTh label="Title" column="title" pathname="/transaction/ticket-management" query={linkQuery} sortBy={activeSortBy} sortDir={sortDir} />
                           <SortableTh label="Company / Department" column="company" pathname="/transaction/ticket-management" query={linkQuery} sortBy={activeSortBy} sortDir={sortDir} />
                           <SortableTh label="Priority" column="priority" pathname="/transaction/ticket-management" query={linkQuery} sortBy={activeSortBy} sortDir={sortDir} />
-                          <SortableTh label="Created" column="createdAt" pathname="/transaction/ticket-management" query={linkQuery} sortBy={activeSortBy} sortDir={sortDir} />
+                          <SortableTh label="Transaction Date" column="transactionDate" pathname="/transaction/ticket-management" query={linkQuery} sortBy={activeSortBy} sortDir={sortDir} />
                           <SortableTh label="Status" column="status" pathname="/transaction/ticket-management" query={linkQuery} sortBy={activeSortBy} sortDir={sortDir} />
-                          <SortableTh label="Assignee" column="assignee" pathname="/transaction/ticket-management" query={linkQuery} sortBy={activeSortBy} sortDir={sortDir} />
+                          <th>Assignee</th>
                           <th className="text-end">Actions</th>
                         </tr>
                       </thead>
@@ -207,11 +279,16 @@ export default async function TicketManagementPage({ searchParams }: PageProps<"
                             <td>
                               <span className={`badge ${PRIORITY_BADGE[ticket.priority]}`}>{ticket.priority}</span>
                             </td>
-                            <td>{formatDateTime(ticket.createdAt)}</td>
+                            <td>{formatDateTime(ticket.transactionDate)}</td>
                             <td>
                               <span className={`badge ${STATUS_BADGE[ticket.status]}`}>{ticket.status}</span>
                             </td>
-                            <td>{formatAssignment(ticket.User_Ticket_assigneeIdToUser?.name, ticket.UserGroup?.name)}</td>
+                            <td>
+                              {formatAssignment(
+                                ticket.TicketAssignee.map((a) => a.User.name),
+                                ticket.TicketAssignedGroup.map((g) => g.UserGroup.name)
+                              )}
+                            </td>
                             <td className="text-end">
                               <TicketRowActions
                                 ticket={{
@@ -219,15 +296,10 @@ export default async function TicketManagementPage({ searchParams }: PageProps<"
                                   ticketNumber: ticket.ticketNumber,
                                   status: ticket.status,
                                   priority: ticket.priority,
-                                  description: ticket.description,
-                                  createdAt: ticket.createdAt,
-                                  creatorName: ticket.User_Ticket_createdByIdToUser.name,
-                                  creatorEmail: ticket.User_Ticket_createdByIdToUser.email,
-                                  assigneeId: ticket.assigneeId,
-                                  assignedGroupId: ticket.assignedGroupId,
+                                  companyId: ticket.companyId,
+                                  assigneeIds: ticket.TicketAssignee.map((a) => a.User.id),
+                                  assignedGroupIds: ticket.TicketAssignedGroup.map((g) => g.UserGroup.id),
                                   supervisor: ticket.Department.User_Department_supervisorIdToUser,
-                                  problem: ticket.problem,
-                                  solution: ticket.solution,
                                 }}
                                 assignees={assignees}
                                 groups={groups}
@@ -251,23 +323,14 @@ export default async function TicketManagementPage({ searchParams }: PageProps<"
                     Showing {tickets.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1} to{" "}
                     {(currentPage - 1) * PAGE_SIZE + tickets.length} of {total} tickets
                   </div>
-                  {totalPages > 1 && (
-                    <ul className="pagination pagination-sm m-0 float-end">
-                      {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-                        <li key={p} className={`page-item ${p === currentPage ? "active" : ""}`}>
-                          <Link
-                            className="page-link"
-                            href={{
-                              pathname: "/transaction/ticket-management",
-                              query: { ...linkQuery, ...(isSorted ? { sort: sortBy, dir: sortDir } : {}), page: p },
-                            }}
-                          >
-                            {p}
-                          </Link>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
+                  <Pagination
+                    currentPage={currentPage}
+                    totalPages={totalPages}
+                    makeHref={(p) => ({
+                      pathname: "/transaction/ticket-management",
+                      query: { ...linkQuery, ...(isSorted ? { sort: sortBy, dir: sortDir } : {}), page: p },
+                    })}
+                  />
                 </div>
               </div>
             </div>

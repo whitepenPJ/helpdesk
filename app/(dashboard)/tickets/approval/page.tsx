@@ -3,9 +3,10 @@ import Link from "next/link";
 import { prisma } from "@/app/lib/db";
 import { requireUser } from "@/app/lib/dal";
 import { SortableTh } from "../../_components/sortable-th";
+import { Pagination } from "../../_components/pagination";
 import { parseSort, type SortDir } from "@/app/lib/table-sort";
 import type { Prisma } from "@/app/generated/prisma/client";
-import { STATUS_BADGE, PRIORITY_BADGE } from "../ticket-badges";
+import { PRIORITY_BADGE } from "../ticket-badges";
 import { formatDateTime } from "@/app/lib/date-format";
 import { ApprovalRowActions } from "./_components/approval-row-actions";
 
@@ -13,7 +14,7 @@ export const metadata: Metadata = { title: "Approval Ticket" };
 
 const PAGE_SIZE = 10;
 
-const SORT_COLUMNS = ["ticketNumber", "title", "category", "company", "priority", "status", "requestedBy", "requestedAt"] as const;
+const SORT_COLUMNS = ["ticketNumber", "title", "category", "company", "priority", "requestedBy", "requestedAt"] as const;
 type SortColumn = (typeof SORT_COLUMNS)[number];
 
 function buildOrderBy(sortBy: SortColumn, sortDir: SortDir): Prisma.TicketApprovalOrderByWithRelationInput {
@@ -28,8 +29,6 @@ function buildOrderBy(sortBy: SortColumn, sortDir: SortDir): Prisma.TicketApprov
       return { Ticket: { Company: { name: sortDir } } };
     case "priority":
       return { Ticket: { priority: sortDir } };
-    case "status":
-      return { Ticket: { status: sortDir } };
     case "requestedBy":
       return { Ticket: { User_Ticket_createdByIdToUser: { name: sortDir } } };
     case "requestedAt":
@@ -114,9 +113,7 @@ export default async function ApprovalTicketsPage({ searchParams }: PageProps<"/
                           <SortableTh label="Category" column="category" pathname="/tickets/approval" query={{}} sortBy={sortBy} sortDir={sortDir} />
                           <SortableTh label="Company / Department" column="company" pathname="/tickets/approval" query={{}} sortBy={sortBy} sortDir={sortDir} />
                           <SortableTh label="Priority" column="priority" pathname="/tickets/approval" query={{}} sortBy={sortBy} sortDir={sortDir} />
-                          <SortableTh label="Status" column="status" pathname="/tickets/approval" query={{}} sortBy={sortBy} sortDir={sortDir} />
                           <SortableTh label="Requested by" column="requestedBy" pathname="/tickets/approval" query={{}} sortBy={sortBy} sortDir={sortDir} />
-                          <th>Message</th>
                           <SortableTh label="Requested" column="requestedAt" pathname="/tickets/approval" query={{}} sortBy={sortBy} sortDir={sortDir} />
                           <th className="text-end">Actions</th>
                         </tr>
@@ -136,26 +133,32 @@ export default async function ApprovalTicketsPage({ searchParams }: PageProps<"/
                                 {approval.Ticket.priority}
                               </span>
                             </td>
-                            <td>
-                              <span className={`badge ${STATUS_BADGE[approval.Ticket.status]}`}>
-                                {approval.Ticket.status}
-                              </span>
-                            </td>
                             <td>{approval.Ticket.User_Ticket_createdByIdToUser.name}</td>
-                            <td className="text-secondary">{approval.requestMessage ?? "—"}</td>
                             <td>{formatDateTime(approval.createdAt)}</td>
                             <td className="text-end">
                               <ApprovalRowActions
                                 approvalId={approval.id}
                                 ticketId={approval.Ticket.id}
                                 ticketNumber={approval.Ticket.ticketNumber}
+                                info={{
+                                  ticketNumber: approval.Ticket.ticketNumber,
+                                  title: approval.Ticket.title,
+                                  categoryName: approval.Ticket.Category.name,
+                                  companyName: approval.Ticket.Company.name,
+                                  departmentName: approval.Ticket.Department.name,
+                                  priority: approval.Ticket.priority,
+                                  status: approval.Ticket.status,
+                                  requestedByName: approval.Ticket.User_Ticket_createdByIdToUser.name,
+                                  requestMessage: approval.requestMessage,
+                                  requestedAt: approval.createdAt,
+                                }}
                               />
                             </td>
                           </tr>
                         ))}
                         {approvals.length === 0 && (
                           <tr>
-                            <td colSpan={10} className="text-center text-secondary py-4">
+                            <td colSpan={8} className="text-center text-secondary py-4">
                               No tickets awaiting your approval.
                             </td>
                           </tr>
@@ -169,20 +172,11 @@ export default async function ApprovalTicketsPage({ searchParams }: PageProps<"/
                     Showing {approvals.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1} to{" "}
                     {(currentPage - 1) * PAGE_SIZE + approvals.length} of {total} tickets
                   </div>
-                  {totalPages > 1 && (
-                    <ul className="pagination pagination-sm m-0 float-end">
-                      {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-                        <li key={p} className={`page-item ${p === currentPage ? "active" : ""}`}>
-                          <Link
-                            className="page-link"
-                            href={{ pathname: "/tickets/approval", query: { sort: sortBy, dir: sortDir, page: p } }}
-                          >
-                            {p}
-                          </Link>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
+                  <Pagination
+                    currentPage={currentPage}
+                    totalPages={totalPages}
+                    makeHref={(p) => ({ pathname: "/tickets/approval", query: { sort: sortBy, dir: sortDir, page: p } })}
+                  />
                 </div>
               </div>
             </div>

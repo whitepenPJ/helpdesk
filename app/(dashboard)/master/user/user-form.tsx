@@ -175,7 +175,7 @@ export function UserForm({
                 defaultValue={companyId}
                 placeholder="No company"
                 options={companies}
-                onChange={setCompanyId}
+                onChange={(value) => setCompanyId(value as string)}
                 disabled={isView}
               />
             </div>
@@ -195,17 +195,20 @@ export function UserForm({
             </div>
           </div>
         </div>
-        <div className="card-footer d-flex gap-2">
+        <div className="card-footer d-flex gap-2 justify-content-end">
           {isView ? (
             <Link href="/master/user" className="btn btn-secondary">
+              <i className="bi bi-arrow-left me-1" aria-hidden="true"></i>
               Back
             </Link>
           ) : (
             <>
               <button className="btn btn-primary" type="submit" disabled={pending}>
+                <i className={`bi ${mode === "create" ? "bi-plus-lg" : "bi-check2"} me-1`} aria-hidden="true"></i>
                 {pending ? "Saving…" : mode === "create" ? "Create user" : "Save changes"}
               </button>
               <Link href="/master/user" className="btn btn-secondary">
+                <i className="bi bi-x-lg me-1" aria-hidden="true"></i>
                 Cancel
               </Link>
             </>

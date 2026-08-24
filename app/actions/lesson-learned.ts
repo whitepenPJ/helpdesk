@@ -82,8 +82,12 @@ export async function createLessonLearned(
       id,
       title: (fields.title as string).trim(),
       description: fields.description as string,
-      images: newImages,
-      attachments: newAttachments,
+      // "Convert to Lesson Learned" (from a ticket) prefills existing
+      // attachment URLs via the same `${name}Existing` hidden-field
+      // convention BootstrapFileInput already uses for edit mode — merge
+      // those in alongside any newly-uploaded files.
+      images: [...stringValues(formData, "imagesExisting"), ...newImages],
+      attachments: [...stringValues(formData, "attachmentsExisting"), ...newAttachments],
       isActive: fields.isActive,
       createdById: session.user.id,
       updatedAt: new Date(),

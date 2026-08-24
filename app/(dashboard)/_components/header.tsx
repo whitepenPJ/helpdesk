@@ -2,7 +2,8 @@ import type { CSSProperties } from "react";
 import Link from "next/link";
 import { auth } from "@/auth";
 import { logout } from "@/app/actions/auth";
-import { getRecentTicketActivity, type TicketActivityItem } from "@/app/lib/notifications";
+import { getRecentTicketActivity, getTicketActivityHref, type TicketActivityItem } from "@/app/lib/notifications";
+import type { Role } from "@/app/generated/prisma/client";
 import { NotificationBell } from "./notification-bell";
 import { NotificationSubscribe } from "./notification-subscribe";
 import { NotificationPoller } from "./notification-poller";
@@ -17,18 +18,20 @@ function formatRelativeTime(date: Date): string {
   return `${diffDays} day${diffDays === 1 ? "" : "s"}`;
 }
 
-function NotificationItem({ item }: { item: TicketActivityItem }) {
+function NotificationItem({ item, role }: { item: TicketActivityItem; role: Role }) {
   return (
-    <Link href={`/tickets/${item.ticketId}`} className="dropdown-item">
-      <i className="bi bi-ticket-perforated me-2" aria-hidden="true"></i>
-      <span className="fw-medium">{item.ticketNumber}</span> {item.action}
-      {item.previousState && item.newState && (
-        <span className="text-secondary">
-          {" "}
-          ({item.previousState} → {item.newState})
-        </span>
-      )}
-      <span className="float-end text-secondary fs-7">{formatRelativeTime(item.timestamp)}</span>
+    <Link href={getTicketActivityHref(item, role)} className="dropdown-item d-flex align-items-start gap-2">
+      <i className="bi bi-ticket-perforated mt-1" aria-hidden="true"></i>
+      <span className="flex-grow-1" style={{ whiteSpace: "normal" }}>
+        <span className="fw-medium">{item.ticketNumber}</span> {item.action}
+        {item.previousState && item.newState && (
+          <span className="text-secondary">
+            {" "}
+            ({item.previousState} → {item.newState})
+          </span>
+        )}
+      </span>
+      <span className="text-secondary fs-7 text-nowrap">{formatRelativeTime(item.timestamp)}</span>
     </Link>
   );
 }
@@ -79,7 +82,10 @@ export async function Header() {
         <ul className="navbar-nav ms-auto">
           <li className="nav-item dropdown">
             <NotificationBell unreadCount={unreadCount} />
-            <div className="dropdown-menu dropdown-menu-lg dropdown-menu-end">
+            <div
+              className="dropdown-menu dropdown-menu-lg dropdown-menu-end"
+              style={{ minWidth: "420px", maxWidth: "90vw" }}
+            >
               <span className="dropdown-item dropdown-header">
                 {unreadCount > 0
                   ? `${unreadCount} New Update${unreadCount === 1 ? "" : "s"}`
@@ -93,7 +99,7 @@ export async function Header() {
                 <>
                   <div className="dropdown-divider"></div>
                   {notifications.map((item) => (
-                    <NotificationItem key={item.id} item={item} />
+                    <NotificationItem key={item.id} item={item} role={user?.role ?? "USER"} />
                   ))}
                 </>
               )}
@@ -183,10 +189,12 @@ export async function Header() {
               </li>
               <li className="user-footer">
                 <Link href="/profile" className="btn btn-outline-secondary">
+                  <i className="bi bi-person-circle me-1" aria-hidden="true"></i>
                   Profile
                 </Link>
                 <form action={logout} className="float-end">
                   <button type="submit" className="btn btn-outline-danger">
+                    <i className="bi bi-box-arrow-right me-1" aria-hidden="true"></i>
                     Sign out
                   </button>
                 </form>

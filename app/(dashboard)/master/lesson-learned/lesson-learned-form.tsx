@@ -8,7 +8,8 @@ import {
   type LessonLearnedFormState,
 } from "@/app/actions/lesson-learned";
 import { RichTextEditor } from "../../_components/rich-text-editor";
-import { FileUploadField } from "../../_components/file-upload-field";
+import { FormVendorScripts } from "../../_components/form-vendor-scripts";
+import { BootstrapFileInput } from "../../_components/bootstrap-file-input";
 
 function FieldError({ messages }: { messages?: string[] }) {
   if (!messages?.length) return null;
@@ -46,6 +47,7 @@ export function LessonLearnedForm({
         </div>
       </div>
       <form key={formKey} action={formAction}>
+        <FormVendorScripts select2={false} fileInput />
         <div className="card-body">
           <div className="row g-3">
             <div className="col-md-8">
@@ -90,7 +92,7 @@ export function LessonLearnedForm({
 
             <div className="col-12">
               <label className="form-label">Images</label>
-              <FileUploadField
+              <BootstrapFileInput
                 name="images"
                 existingFiles={existingImages}
                 accept="image/*"
@@ -101,21 +103,24 @@ export function LessonLearnedForm({
 
             <div className="col-12">
               <label className="form-label">Attach File</label>
-              <FileUploadField name="attachments" existingFiles={existingAttachments} preview="list" disabled={isView} />
+              <BootstrapFileInput name="attachments" existingFiles={existingAttachments} disabled={isView} />
             </div>
           </div>
         </div>
-        <div className="card-footer d-flex gap-2">
+        <div className="card-footer d-flex gap-2 justify-content-end">
           {isView ? (
             <Link href="/master/lesson-learned" className="btn btn-secondary">
+              <i className="bi bi-arrow-left me-1" aria-hidden="true"></i>
               Back
             </Link>
           ) : (
             <>
               <button className="btn btn-primary" type="submit" disabled={pending}>
+                <i className={`bi ${mode === "create" ? "bi-plus-lg" : "bi-check2"} me-1`} aria-hidden="true"></i>
                 {pending ? "Saving…" : mode === "create" ? "Create entry" : "Save changes"}
               </button>
               <Link href="/master/lesson-learned" className="btn btn-secondary">
+                <i className="bi bi-x-lg me-1" aria-hidden="true"></i>
                 Cancel
               </Link>
             </>

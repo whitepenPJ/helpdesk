@@ -64,7 +64,6 @@ export default async function EditTicketPage({ params }: PageProps<"/tickets/[id
               <EditTicketForm
                 ticketId={ticket.id}
                 ticketNumber={ticket.ticketNumber}
-                createdAt={ticket.createdAt}
                 categories={categories.map((c) => ({ value: c.id, label: c.name }))}
                 companies={companies.map((c) => ({ value: c.id, label: c.name }))}
                 departments={departments.map((d) => ({ value: d.id, label: d.name, companyId: d.companyId }))}
@@ -75,6 +74,7 @@ export default async function EditTicketPage({ params }: PageProps<"/tickets/[id
                   telephone: ticket.telephone ?? "",
                   companyId: ticket.companyId,
                   departmentId: ticket.departmentId,
+                  transactionDate: ticket.transactionDate,
                 }}
               />
             </div>

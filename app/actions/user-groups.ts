@@ -6,10 +6,12 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/app/lib/db";
 import { requireAdmin } from "@/app/lib/dal";
 
+export type StagedMemberInput = { id: string; label: string };
+
 export type UserGroupFormState =
   | {
       errors?: Record<string, string[]>;
-      values?: { name: string; isActive: boolean };
+      values?: { name: string; isActive: boolean; members?: StagedMemberInput[] };
     }
   | undefined;
 
@@ -21,6 +23,21 @@ function readFields(formData: FormData) {
   };
 }
 
+// The Create form stages members client-side (no groupId exists yet to
+// attach them to) and carries the whole staged list as one JSON hidden
+// field — see staged-picker-button.tsx and user-group-form.tsx.
+function parseStagedMembers(formData: FormData): StagedMemberInput[] {
+  const raw = formData.get("members");
+  if (typeof raw !== "string" || !raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((m): m is StagedMemberInput => m && typeof m === "object" && typeof m.id === "string");
+  } catch {
+    return [];
+  }
+}
+
 export async function createUserGroup(
   _prevState: UserGroupFormState,
   formData: FormData
@@ -28,7 +45,8 @@ export async function createUserGroup(
   await requireAdmin();
 
   const { name, isActive } = readFields(formData);
-  const values = { name: typeof name === "string" ? name : "", isActive };
+  const members = parseStagedMembers(formData);
+  const values = { name: typeof name === "string" ? name : "", isActive, members };
   const errors: Record<string, string[]> = {};
 
   if (typeof name !== "string" || name.trim().length === 0) {
@@ -44,14 +62,17 @@ export async function createUserGroup(
     return { errors: { name: ["A user group with this name already exists."] }, values };
   }
 
-  await prisma.userGroup.create({
-    data: {
-      id: randomUUID(),
-      name: (name as string).trim(),
-      isActive,
-      updatedAt: new Date(),
-    },
-  });
+  const memberIds = members.map((m) => m.id);
+  const groupId = randomUUID();
+  const now = new Date();
+  await prisma.$transaction([
+    prisma.userGroup.create({
+      data: { id: groupId, name: (name as string).trim(), isActive, updatedAt: now },
+    }),
+    ...(memberIds.length
+      ? [prisma.user.updateMany({ where: { id: { in: memberIds } }, data: { userGroupId: groupId } })]
+      : []),
+  ]);
 
   revalidatePath("/master/user-group");
   redirect("/master/user-group");
@@ -65,7 +86,8 @@ export async function updateUserGroup(
   await requireAdmin();
 
   const { name, isActive } = readFields(formData);
-  const values = { name: typeof name === "string" ? name : "", isActive };
+  const members = parseStagedMembers(formData);
+  const values = { name: typeof name === "string" ? name : "", isActive, members };
   const errors: Record<string, string[]> = {};
 
   if (typeof name !== "string" || name.trim().length === 0) {
@@ -81,14 +103,20 @@ export async function updateUserGroup(
     return { errors: { name: ["A user group with this name already exists."] }, values };
   }
 
-  await prisma.userGroup.update({
-    where: { id },
-    data: {
-      name: (name as string).trim(),
-      isActive,
-      updatedAt: new Date(),
-    },
-  });
+  const memberIds = members.map((m) => m.id);
+  const now = new Date();
+  await prisma.$transaction([
+    prisma.userGroup.update({
+      where: { id },
+      data: { name: (name as string).trim(), isActive, updatedAt: now },
+    }),
+    // Replace membership wholesale to match the staged list exactly: drop
+    // anyone no longer in it, add anyone new.
+    prisma.user.updateMany({ where: { userGroupId: id, id: { notIn: memberIds } }, data: { userGroupId: null } }),
+    ...(memberIds.length
+      ? [prisma.user.updateMany({ where: { id: { in: memberIds } }, data: { userGroupId: id } })]
+      : []),
+  ]);
 
   revalidatePath("/master/user-group");
   redirect("/master/user-group");
@@ -99,7 +127,7 @@ export async function deleteUserGroup(id: string) {
 
   const [userCount, ticketCount] = await Promise.all([
     prisma.user.count({ where: { userGroupId: id } }),
-    prisma.ticket.count({ where: { assignedGroupId: id } }),
+    prisma.ticketAssignedGroup.count({ where: { userGroupId: id } }),
   ]);
 
   if (userCount > 0 || ticketCount > 0) {
@@ -109,36 +137,4 @@ export async function deleteUserGroup(id: string) {
   await prisma.userGroup.delete({ where: { id } });
   revalidatePath("/master/user-group");
   redirect("/master/user-group");
-}
-
-export type AddGroupMemberState =
-  | {
-      errors?: Record<string, string[]>;
-      success?: boolean;
-    }
-  | undefined;
-
-export async function addUserToGroup(
-  groupId: string,
-  _prevState: AddGroupMemberState,
-  formData: FormData
-): Promise<AddGroupMemberState> {
-  await requireAdmin();
-
-  const userId = formData.get("userId");
-  if (typeof userId !== "string" || !userId) {
-    return { errors: { userId: ["Select a user."] } };
-  }
-
-  await prisma.user.update({ where: { id: userId }, data: { userGroupId: groupId } });
-
-  revalidatePath(`/master/user-group/${groupId}/edit`);
-  return { success: true };
-}
-
-export async function removeUserFromGroup(groupId: string, userId: string) {
-  await requireAdmin();
-
-  await prisma.user.updateMany({ where: { id: userId, userGroupId: groupId }, data: { userGroupId: null } });
-  revalidatePath(`/master/user-group/${groupId}/edit`);
 }

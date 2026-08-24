@@ -9,12 +9,12 @@ import { formatDateTime } from "@/app/lib/date-format";
 import type { Prisma, Role } from "@/app/generated/prisma/client";
 
 type AssignmentTarget = {
-  assigneeId?: string | null;
-  assignedGroupId?: string | null;
+  assigneeIds?: string[];
+  assignedGroupIds?: string[];
 };
 
-// Notifies the assignee and/or every active member of the assigned group
-// (deduped, in case someone is both) that a ticket needs their attention —
+// Notifies every assignee and/or every active member of the assigned groups
+// (deduped, in case someone is in both) that a ticket needs their attention —
 // by email and by browser push, in parallel, each failure logged rather
 // than thrown so one bad recipient/channel doesn't block the rest.
 export async function notifyTicketAssigned(ticketId: string, target: AssignmentTarget): Promise<void> {
@@ -24,20 +24,20 @@ export async function notifyTicketAssigned(ticketId: string, target: AssignmentT
   });
   if (!ticket) return;
 
-  const [assignee, groupMembers] = await Promise.all([
-    target.assigneeId
-      ? prisma.user.findUnique({ where: { id: target.assigneeId }, select: { id: true, email: true } })
-      : null,
-    target.assignedGroupId
+  const [assignees, groupMembers] = await Promise.all([
+    target.assigneeIds?.length
+      ? prisma.user.findMany({ where: { id: { in: target.assigneeIds } }, select: { id: true, email: true } })
+      : [],
+    target.assignedGroupIds?.length
       ? prisma.user.findMany({
-          where: { userGroupId: target.assignedGroupId, status: "ACTIVE" },
+          where: { userGroupId: { in: target.assignedGroupIds }, status: "ACTIVE" },
           select: { id: true, email: true },
         })
       : [],
   ]);
 
   const recipients = new Map<string, { id: string; email: string }>();
-  if (assignee) recipients.set(assignee.id, assignee);
+  for (const assignee of assignees) recipients.set(assignee.id, assignee);
   for (const member of groupMembers) recipients.set(member.id, member);
   if (recipients.size === 0) return;
 
@@ -67,9 +67,74 @@ export async function notifyTicketAssigned(ticketId: string, target: AssignmentT
   ]);
 }
 
-// Notifies every active admin (other than the ticket's own creator, if the
-// creator happens to be an admin) that a new ticket needs triage — by email
-// and browser push, same fire-and-log-per-channel pattern as
+// Notifies the ticket's owner once the assignee marks it Resolved, prompting
+// them to review and close it — the new flow has no separate admin
+// "Verified" step, so this is the only nudge the owner gets. Same
+// fire-and-log-per-channel pattern as notifyTicketAssigned above.
+export async function notifyTicketResolved(ticketId: string): Promise<void> {
+  const ticket = await prisma.ticket.findUnique({
+    where: { id: ticketId },
+    select: {
+      ticketNumber: true,
+      title: true,
+      createdById: true,
+      User_Ticket_createdByIdToUser: { select: { id: true, email: true } },
+    },
+  });
+  if (!ticket) return;
+
+  const requestHeaders = await headers();
+  const host = requestHeaders.get("host");
+  const proto = requestHeaders.get("x-forwarded-proto") ?? "http";
+  const url = `${host ? `${proto}://${host}` : ""}/tickets/${ticketId}`;
+
+  const subject = `Ticket ${ticket.ticketNumber} resolved — please confirm`;
+  const pushBody = `"${ticket.title}" has been resolved. Review and close it when you're satisfied.`;
+  const emailBody = `${pushBody} ${url}`;
+
+  await Promise.all([
+    sendEmail({ to: ticket.User_Ticket_createdByIdToUser.email, subject, text: emailBody }).catch((error) =>
+      console.error(`notifyTicketResolved: email to ${ticket.User_Ticket_createdByIdToUser.email} failed`, error)
+    ),
+    sendPushToUser(ticket.createdById, { title: subject, body: pushBody, url }).catch((error) =>
+      console.error(`notifyTicketResolved: push to user ${ticket.createdById} failed`, error)
+    ),
+  ]);
+}
+
+// Scoped to the admins assigned to a Category (via CategoryAdmin, set on
+// the category's Master page) rather than every admin, so category-related
+// triage notifications only reach the people who actually own that
+// category. Falls back to every active admin when a category has no
+// CategoryAdmin rows yet, so a not-yet-configured category doesn't
+// silently notify nobody. Shared by notifyTicketCreated and
+// notifyTicketApproved so the two never define "the category's admins"
+// differently.
+async function getCategoryAdminRecipients(
+  categoryId: string,
+  excludeUserId?: string
+): Promise<{ id: string; email: string }[]> {
+  const excludeClause = excludeUserId ? { id: { not: excludeUserId } } : {};
+
+  const categoryAdmins = await prisma.user.findMany({
+    where: {
+      role: "ADMIN",
+      status: "ACTIVE",
+      ...excludeClause,
+      CategoryAdmin: { some: { categoryId } },
+    },
+    select: { id: true, email: true },
+  });
+  if (categoryAdmins.length > 0) return categoryAdmins;
+
+  return prisma.user.findMany({
+    where: { role: "ADMIN", status: "ACTIVE", ...excludeClause },
+    select: { id: true, email: true },
+  });
+}
+
+// Notifies the admins responsible for triaging a new ticket — by email and
+// browser push, same fire-and-log-per-channel pattern as
 // notifyTicketAssigned above.
 export async function notifyTicketCreated(ticketId: string): Promise<void> {
   const ticket = await prisma.ticket.findUnique({
@@ -81,6 +146,7 @@ export async function notifyTicketCreated(ticketId: string): Promise<void> {
       priority: true,
       createdById: true,
       createdAt: true,
+      categoryId: true,
       Category: { select: { name: true } },
       Department: { select: { name: true } },
       User_Ticket_createdByIdToUser: { select: { name: true, email: true } },
@@ -88,10 +154,7 @@ export async function notifyTicketCreated(ticketId: string): Promise<void> {
   });
   if (!ticket) return;
 
-  const admins = await prisma.user.findMany({
-    where: { role: "ADMIN", status: "ACTIVE", id: { not: ticket.createdById } },
-    select: { id: true, email: true },
-  });
+  const admins = await getCategoryAdminRecipients(ticket.categoryId, ticket.createdById);
   if (admins.length === 0) return;
 
   const requestHeaders = await headers();
@@ -127,6 +190,76 @@ export async function notifyTicketCreated(ticketId: string): Promise<void> {
   );
 }
 
+// Notifies the reviewing supervisor that an admin is waiting on their
+// approve/reject decision — by email and browser push, same
+// fire-and-log-per-channel pattern as the notifiers above. Links to the
+// supervisor's own Approval Ticket queue (getHomePathForRole's SUPERVISOR
+// landing page), not the ticket detail page — that's where they actually
+// act on it.
+export async function notifyApprovalRequested(ticketId: string, supervisorId: string): Promise<void> {
+  const [ticket, supervisor] = await Promise.all([
+    prisma.ticket.findUnique({ where: { id: ticketId }, select: { ticketNumber: true, title: true, priority: true } }),
+    prisma.user.findUnique({ where: { id: supervisorId }, select: { id: true, email: true } }),
+  ]);
+  if (!ticket || !supervisor) return;
+
+  const requestHeaders = await headers();
+  const host = requestHeaders.get("host");
+  const proto = requestHeaders.get("x-forwarded-proto") ?? "http";
+  const url = `${host ? `${proto}://${host}` : ""}/tickets/approval`;
+
+  const subject = `Approval requested: Ticket ${ticket.ticketNumber}`;
+  const pushBody = `"${ticket.title}" — ${ticket.priority} priority`;
+  const emailBody = `An admin requested your approval on ticket ${ticket.ticketNumber} ("${ticket.title}"). Review it: ${url}`;
+
+  await Promise.all([
+    sendEmail({ to: supervisor.email, subject, text: emailBody }).catch((error) =>
+      console.error(`notifyApprovalRequested: email to ${supervisor.email} failed`, error)
+    ),
+    sendPushToUser(supervisor.id, { title: subject, body: pushBody, url }).catch((error) =>
+      console.error(`notifyApprovalRequested: push to supervisor ${supervisor.id} failed`, error)
+    ),
+  ]);
+}
+
+// Notifies the ticket's category admins that a supervisor approved a
+// ticket that had been routed to them — same category-scoping as
+// notifyTicketCreated (see getCategoryAdminRecipients), so this reaches
+// the same people who were originally responsible for triaging it. Links
+// into Ticket Management rather than the plain ticket view, since that's
+// where the "Approved by ... at ..." banner (see ticket-detail-content.tsx)
+// lives.
+export async function notifyTicketApproved(ticketId: string, supervisorName: string): Promise<void> {
+  const ticket = await prisma.ticket.findUnique({
+    where: { id: ticketId },
+    select: { ticketNumber: true, title: true, priority: true, categoryId: true },
+  });
+  if (!ticket) return;
+
+  const admins = await getCategoryAdminRecipients(ticket.categoryId);
+  if (admins.length === 0) return;
+
+  const requestHeaders = await headers();
+  const host = requestHeaders.get("host");
+  const proto = requestHeaders.get("x-forwarded-proto") ?? "http";
+  const url = `${host ? `${proto}://${host}` : ""}/transaction/ticket-management/${ticketId}`;
+
+  const subject = `Ticket ${ticket.ticketNumber} approved by ${supervisorName}`;
+  const pushBody = `"${ticket.title}" was approved by ${supervisorName}`;
+  const emailBody = `${pushBody}. View it: ${url}`;
+
+  await Promise.all(
+    admins.flatMap((admin) => [
+      sendEmail({ to: admin.email, subject, text: emailBody }).catch((error) =>
+        console.error(`notifyTicketApproved: email to ${admin.email} failed`, error)
+      ),
+      sendPushToUser(admin.id, { title: subject, body: pushBody, url }).catch((error) =>
+        console.error(`notifyTicketApproved: push to admin ${admin.id} failed`, error)
+      ),
+    ])
+  );
+}
+
 export type TicketActivityItem = {
   id: string;
   ticketId: string;
@@ -141,6 +274,34 @@ export type TicketActivitySummary = {
   items: TicketActivityItem[];
   unreadCount: number;
 };
+
+// New-ticket notifications for admins jump straight into the assign/edit
+// flow (the same place Ticket Management's own "Edit" row action goes —
+// see ticket-row-actions.tsx) rather than the plain read-only detail view,
+// since triaging a brand-new ticket is exactly what an admin clicking that
+// notification wants to do next. Every other notification (status changes,
+// assignments, etc.) and every non-admin still land on the plain view.
+export function getTicketActivityHref(item: Pick<TicketActivityItem, "ticketId" | "action">, role: Role): string {
+  // Non-admin only: an admin's activity feed is org-wide (see
+  // buildActivityWhere below), so a "Ticket assigned" entry there is often
+  // about someone else's assignment, not the admin's own — the "Assigned
+  // Ticket" framing would be wrong. A non-admin's feed is already scoped to
+  // tickets they created or are assigned to, so it's always correct there.
+  if (role !== "ADMIN" && item.action === "Ticket assigned") {
+    return `/tickets/assigned/${item.ticketId}`;
+  }
+  if (role === "ADMIN") {
+    if (item.action === "Ticket created") {
+      return `/transaction/ticket-management/${item.ticketId}?edit=1`;
+    }
+    // "Closed by ... (Supervisor)" / "Approved by ... (Supervisor)" —
+    // see decideTicketApproval in app/actions/approvals.ts.
+    if (item.action.startsWith("Closed by ") || item.action.startsWith("Approved by ")) {
+      return `/transaction/ticket-management/${item.ticketId}`;
+    }
+  }
+  return `/tickets/${item.ticketId}`;
+}
 
 const RECENT_ACTIVITY_LIMIT = 8;
 
@@ -163,8 +324,8 @@ async function buildActivityWhere(userId: string, role: Role): Promise<Prisma.Ti
     Ticket: {
       OR: [
         { createdById: userId },
-        { assigneeId: userId },
-        ...(user?.userGroupId ? [{ assignedGroupId: user.userGroupId }] : []),
+        { TicketAssignee: { some: { userId } } },
+        ...(user?.userGroupId ? [{ TicketAssignedGroup: { some: { userGroupId: user.userGroupId } } }] : []),
       ],
     },
   };

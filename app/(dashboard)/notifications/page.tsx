@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { requireUser } from "@/app/lib/dal";
-import { getTicketActivityPage } from "@/app/lib/notifications";
+import { getTicketActivityPage, getTicketActivityHref } from "@/app/lib/notifications";
 import { formatDateTime } from "@/app/lib/date-format";
+import { Pagination } from "../_components/pagination";
 
 export const metadata: Metadata = { title: "Notifications" };
 
@@ -57,7 +58,10 @@ export default async function NotificationsPage({ searchParams }: PageProps<"/no
                     <ul className="list-group list-group-flush">
                       {items.map((item) => (
                         <li key={item.id} className="list-group-item">
-                          <Link href={`/tickets/${item.ticketId}`} className="d-flex justify-content-between gap-3">
+                          <Link
+                            href={getTicketActivityHref(item, session.user.role)}
+                            className="d-flex justify-content-between gap-3"
+                          >
                             <span>
                               <i className="bi bi-ticket-perforated me-2" aria-hidden="true"></i>
                               <span className="fw-medium">{item.ticketNumber}</span> {item.action}
@@ -80,17 +84,11 @@ export default async function NotificationsPage({ searchParams }: PageProps<"/no
                     Showing {items.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1} to{" "}
                     {(currentPage - 1) * PAGE_SIZE + items.length} of {total} notifications
                   </div>
-                  {totalPages > 1 && (
-                    <ul className="pagination pagination-sm m-0 float-end">
-                      {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-                        <li key={p} className={`page-item ${p === currentPage ? "active" : ""}`}>
-                          <Link className="page-link" href={{ pathname: "/notifications", query: { page: p } }}>
-                            {p}
-                          </Link>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
+                  <Pagination
+                    currentPage={currentPage}
+                    totalPages={totalPages}
+                    makeHref={(p) => ({ pathname: "/notifications", query: { page: p } })}
+                  />
                 </div>
               </div>
             </div>

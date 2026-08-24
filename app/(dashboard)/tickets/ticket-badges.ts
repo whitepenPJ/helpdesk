@@ -4,7 +4,6 @@ export const STATUS_BADGE: Record<TicketStatus, string> = {
   NEW: "text-bg-secondary",
   ASSIGNED: "text-bg-info",
   RESOLVED: "text-bg-primary",
-  VERIFIED: "text-bg-success",
   REOPENED: "text-bg-warning",
   CLOSED: "text-bg-dark",
   WAITING: "text-bg-danger",
@@ -18,7 +17,7 @@ export const PRIORITY_BADGE: Record<Priority, string> = {
 };
 
 // NEW/WAITING/REOPENED need eyes soonest (nothing is happening for the
-// customer), then RESOLVED/ASSIGNED/VERIFIED, then CLOSED last.
-export const STATUSES: TicketStatus[] = ["NEW", "WAITING", "REOPENED", "RESOLVED", "ASSIGNED", "VERIFIED", "CLOSED"];
+// customer), then RESOLVED/ASSIGNED, then CLOSED last.
+export const STATUSES: TicketStatus[] = ["NEW", "WAITING", "REOPENED", "RESOLVED", "ASSIGNED", "CLOSED"];
 
 export const PRIORITIES: Priority[] = ["LOW", "MEDIUM", "HIGH", "URGENT"];

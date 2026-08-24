@@ -50,7 +50,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     MicrosoftEntraID({
       clientId: process.env.AZURE_AD_CLIENT_ID,
       clientSecret: process.env.AZURE_AD_CLIENT_SECRET,
-      issuer: `https://login.microsoftonline.com/${process.env.AZURE_AD_TENANT_ID}/v2.0`,
+      // "organizations" accepts any Microsoft work/school account from any
+      // Azure AD tenant (not just one specific tenant, and not personal
+      // Microsoft accounts — that would be "common"). The App Registration
+      // itself must also be switched to multi-tenant in Azure Portal
+      // (Authentication > Supported account types), or Microsoft still
+      // rejects the sign-in before this even matters.
+      issuer: "https://login.microsoftonline.com/organizations/v2.0",
     }),
   ],
   callbacks: {

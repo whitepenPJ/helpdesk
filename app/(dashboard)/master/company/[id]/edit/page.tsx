@@ -11,7 +11,7 @@ export default async function EditCompanyPage({ params }: PageProps<"/master/com
   await requireAdmin();
 
   const { id } = await params;
-  const [company, departments, supervisors] = await Promise.all([
+  const [company, departments, freeSupervisors, allSupervisors] = await Promise.all([
     prisma.company.findUnique({ where: { id } }),
     prisma.department.findMany({
       where: { companyId: id },
@@ -22,6 +22,16 @@ export default async function EditCompanyPage({ params }: PageProps<"/master/com
       where: { role: "SUPERVISOR", Department_Department_supervisorIdToUser: null },
       orderBy: { name: "asc" },
       select: { id: true, name: true },
+    }),
+    // Broader than freeSupervisors — includes every supervisor regardless of
+    // current assignment, plus which department (if any) they currently
+    // supervise, so each row's "edit supervisor" picker can offer its own
+    // current supervisor too (who's excluded from freeSupervisors precisely
+    // because they're not "free").
+    prisma.user.findMany({
+      where: { role: "SUPERVISOR" },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, Department_Department_supervisorIdToUser: { select: { id: true } } },
     }),
   ]);
 
@@ -70,9 +80,17 @@ export default async function EditCompanyPage({ params }: PageProps<"/master/com
                 departments={departments.map((d) => ({
                   id: d.id,
                   name: d.name,
+                  supervisorId: d.supervisorId,
                   supervisorName: d.User_Department_supervisorIdToUser?.name ?? null,
+                  availableSupervisors: allSupervisors
+                    .filter(
+                      (s) =>
+                        !s.Department_Department_supervisorIdToUser ||
+                        s.Department_Department_supervisorIdToUser.id === d.id
+                    )
+                    .map((s) => ({ value: s.id, label: s.name })),
                 }))}
-                supervisors={supervisors.map((s) => ({ value: s.id, label: s.name }))}
+                supervisors={freeSupervisors.map((s) => ({ value: s.id, label: s.name }))}
               />
             </div>
           </div>

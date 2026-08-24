@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/app/lib/db";
 import { requireAdmin } from "@/app/lib/dal";
+import { getAttachmentName } from "@/app/lib/attachments";
 import { LessonLearnedForm } from "../../lesson-learned-form";
 
 export const metadata: Metadata = { title: "Edit Lesson Learned" };
@@ -52,8 +53,8 @@ export default async function EditLessonLearnedPage({ params }: PageProps<"/mast
                 mode="edit"
                 entryId={entry.id}
                 initialValues={{ title: entry.title, description: entry.description, isActive: entry.isActive }}
-                existingImages={entry.images.map((url) => ({ url, name: url.split("/").pop() ?? url }))}
-                existingAttachments={entry.attachments.map((url) => ({ url, name: url.split("/").pop() ?? url }))}
+                existingImages={entry.images.map((url) => ({ url, name: getAttachmentName(url) }))}
+                existingAttachments={entry.attachments.map((url) => ({ url, name: getAttachmentName(url) }))}
               />
             </div>
           </div>

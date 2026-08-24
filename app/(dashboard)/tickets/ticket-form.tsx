@@ -5,7 +5,10 @@ import Link from "next/link";
 import { createTicket, type TicketFormState } from "@/app/actions/tickets";
 import { Select2Select } from "../_components/select2-select";
 import { FormVendorScripts } from "../_components/form-vendor-scripts";
+import { BootstrapFileInput } from "../_components/bootstrap-file-input";
+import { useMounted } from "../_components/use-mounted";
 import { STATUS_BADGE } from "./ticket-badges";
+import { toDateTimeLocalValue } from "@/app/lib/date-format";
 
 type Option = { value: string; label: string };
 
@@ -52,6 +55,13 @@ export function TicketForm({
   // createTicket) — for everyone else this stays locked to their own id.
   const creatorIdValue = canChangeCreator ? (values?.creatorId ?? defaultCreatorId) : defaultCreatorId;
 
+  // Real Date only once mounted, so server-rendered HTML and the client's
+  // first render match exactly (the real creation timestamp is stamped
+  // server-side on submit anyway — this is just "right now" for the person
+  // filling the form).
+  const mounted = useMounted();
+  const now = mounted ? new Date() : null;
+
   // Department belongs to a company, so it can't be chosen until a company
   // is — same cascading pattern as the Master User form.
   const [companyId, setCompanyId] = useState(values?.companyId ?? defaultCompanyId ?? "");
@@ -71,19 +81,12 @@ export function TicketForm({
 
   return (
     <div className="card card-primary card-outline mb-4">
-      <FormVendorScripts />
+      <FormVendorScripts fileInput />
       <div className="card-header">
-        <div className="d-flex flex-wrap justify-content-between align-items-center gap-2">
-          <div className="card-title mb-0 text-secondary">Ticket #: Auto</div>
-          <div className="d-flex flex-wrap align-items-center gap-3 fs-7 text-secondary">
-            <span>
-              <i className="bi bi-calendar-event me-1" aria-hidden="true"></i>
-              Created: Auto
-            </span>
-            <span className="d-flex align-items-center gap-1">
-              Status: <span className={`badge ${STATUS_BADGE.NEW}`}>NEW</span>
-            </span>
-          </div>
+        <div className="d-flex flex-wrap justify-content-end align-items-center gap-2">
+          <span className="d-flex align-items-center gap-1 fs-7 text-secondary">
+            Status: <span className={`badge ${STATUS_BADGE.NEW}`}>NEW</span>
+          </span>
         </div>
       </div>
       <form key={formKey} action={formAction}>
@@ -100,6 +103,7 @@ export function TicketForm({
                 className="form-control"
                 defaultValue={titleValue}
                 required
+                maxLength={255}
               />
               <FieldError messages={state?.errors?.title} />
             </div>
@@ -111,7 +115,7 @@ export function TicketForm({
                 id="description"
                 name="description"
                 className="form-control"
-                rows={4}
+                rows={5}
                 defaultValue={descriptionValue}
                 required
               />
@@ -156,8 +160,27 @@ export function TicketForm({
                 className="form-control"
                 defaultValue={telephoneValue}
                 required
+                maxLength={20}
               />
               <FieldError messages={state?.errors?.telephone} />
+            </div>
+            <div className="col-md-6">
+              <label htmlFor="transactionDate" className="form-label">
+                Transaction Date
+              </label>
+              {now ? (
+                <input
+                  type="datetime-local"
+                  id="transactionDate"
+                  name="transactionDate"
+                  className="form-control"
+                  defaultValue={values?.transactionDate || toDateTimeLocalValue(now)}
+                  required
+                />
+              ) : (
+                <input type="text" className="form-control" value="Loading…" disabled readOnly aria-hidden="true" />
+              )}
+              <FieldError messages={state?.errors?.transactionDate} />
             </div>
 
             <div className="col-md-6">
@@ -170,7 +193,7 @@ export function TicketForm({
                 required
                 placeholder="Select a company"
                 options={companies}
-                onChange={setCompanyId}
+                onChange={(value) => setCompanyId(value as string)}
               />
               <FieldError messages={state?.errors?.companyId} />
             </div>
@@ -194,16 +217,18 @@ export function TicketForm({
               <label htmlFor="attachments" className="form-label">
                 Attach File
               </label>
-              <input type="file" id="attachments" name="attachments" className="form-control" multiple />
+              <BootstrapFileInput name="attachments" />
             </div>
           </div>
         </div>
-        <div className="card-footer d-flex gap-2">
+        <div className="card-footer d-flex gap-2 justify-content-end">
           <button className="btn btn-primary" type="submit" disabled={pending}>
+            <i className={`bi ${pending ? "bi-hourglass-split" : "bi-send"} me-1`} aria-hidden="true"></i>
             {pending ? "Submitting…" : "Submit ticket"}
           </button>
           <Link href="/tickets" className="btn btn-secondary">
-            Cancel
+            <i className="bi bi-arrow-left me-1" aria-hidden="true"></i>
+            Back
           </Link>
         </div>
       </form>

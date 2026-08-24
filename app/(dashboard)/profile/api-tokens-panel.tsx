@@ -40,6 +40,7 @@ export function ApiTokensPanel({ tokens }: { tokens: Token[] }) {
             <div className="input-group input-group-sm">
               <input type="text" className="form-control font-monospace" value={state.token} readOnly />
               <button type="button" className="btn btn-outline-secondary" onClick={copyToken}>
+                <i className={`bi ${copied ? "bi-check2" : "bi-clipboard"} me-1`} aria-hidden="true"></i>
                 {copied ? "Copied!" : "Copy"}
               </button>
             </div>
@@ -55,10 +56,11 @@ export function ApiTokensPanel({ tokens }: { tokens: Token[] }) {
             type="text"
             name="name"
             className="form-control form-control-sm"
-            placeholder="e.g. Gemini MCP"
+            placeholder="e.g. Gemini MCP, Microsoft Copilot MCP, Claude MCP"
             required
           />
           <button type="submit" className="btn btn-sm btn-primary text-nowrap" disabled={pending}>
+            <i className="bi bi-key-fill me-1" aria-hidden="true"></i>
             {pending ? "Generating…" : "Generate token"}
           </button>
         </form>

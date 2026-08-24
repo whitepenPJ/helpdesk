@@ -5,14 +5,9 @@ import { useEffect, useRef } from "react";
 declare global {
   interface Window {
     jQuery?: {
-      (target: unknown): {
-        select2: (options?: Record<string, unknown> | string) => unknown;
-        data: (key: string) => unknown;
-        val: () => unknown;
-        on: (event: string, handler: () => void) => unknown;
-        off: (event: string, handler: () => void) => unknown;
-      };
-      fn: { select2?: unknown };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (target: unknown): any;
+      fn: Record<string, unknown>;
     };
   }
 }
@@ -48,7 +43,7 @@ export function Select2Select({
   placeholder?: string;
   required?: boolean;
   disabled?: boolean;
-  onChange?: (value: string) => void;
+  onChange?: (value: string | string[]) => void;
 }) {
   const selectRef = useRef<HTMLSelectElement>(null);
   // Select2 reports selection changes through jQuery's own event system
@@ -68,7 +63,10 @@ export function Select2Select({
     let timer: ReturnType<typeof setTimeout>;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let $el: any;
-    const handleChange = () => onChangeRef.current?.(String($el.val() ?? ""));
+    const handleChange = () => {
+      const val = $el.val();
+      onChangeRef.current?.(multiple ? (Array.isArray(val) ? val : []) : String(val ?? ""));
+    };
 
     function init() {
       const jq = window.jQuery;
@@ -103,7 +101,9 @@ export function Select2Select({
       defaultValue={multiple ? defaultValues : (defaultValue ?? "")}
       required={required}
       disabled={disabled}
-      onChange={(e) => onChange?.(e.target.value)}
+      onChange={(e) =>
+        onChange?.(multiple ? Array.from(e.target.selectedOptions).map((o) => o.value) : e.target.value)
+      }
     >
       {!multiple && <option value="">{placeholder}</option>}
       {options.map((opt) => (

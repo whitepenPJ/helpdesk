@@ -1,4 +1,5 @@
-export function formatAssignment(assigneeName?: string | null, groupName?: string | null): string {
-  const parts = [assigneeName, groupName].filter((part): part is string => Boolean(part));
-  return parts.length > 0 ? parts.join(" / ") : "Unassigned";
+export function formatAssignment(assigneeNames: string[], groupNames: string[]): string {
+  const assignee = assigneeNames.length ? assigneeNames.join(", ") : null;
+  const group = groupNames.length ? groupNames.join(", ") : null;
+  return assignee || group ? [assignee, group].filter(Boolean).join(" / ") : "Unassigned";
 }

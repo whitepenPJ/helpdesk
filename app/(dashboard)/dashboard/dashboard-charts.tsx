@@ -1,6 +1,8 @@
 "use client";
 
 import Script from "next/script";
+import type { TrendPoint } from "@/app/lib/dashboard-data";
+import type { TicketStatus, Priority } from "@/app/generated/prisma/client";
 
 declare global {
   interface Window {
@@ -8,77 +10,85 @@ declare global {
   }
 }
 
-const SPARKLINE_DATA: Record<string, number[]> = {
-  "table-sparkline-1": [25, 66, 41, 89, 63, 25, 44, 12, 36, 9, 54],
-  "table-sparkline-2": [12, 56, 21, 39, 73, 45, 64, 52, 36, 59, 44],
-  "table-sparkline-3": [15, 46, 21, 59, 33, 15, 34, 42, 56, 19, 64],
-  "table-sparkline-4": [30, 56, 31, 69, 43, 35, 24, 32, 46, 29, 64],
-  "table-sparkline-5": [20, 76, 51, 79, 53, 35, 54, 22, 36, 49, 64],
-  "table-sparkline-6": [5, 36, 11, 69, 23, 15, 14, 42, 26, 19, 44],
-  "table-sparkline-7": [12, 56, 21, 39, 73, 45, 64, 52, 36, 59, 74],
+// Mirrors the Bootstrap semantic colors behind ticket-badges.ts's
+// STATUS_BADGE / PRIORITY_BADGE classes, so the charts read consistently
+// with every badge elsewhere in the app.
+const STATUS_COLOR: Record<TicketStatus, string> = {
+  NEW: "#6c757d",
+  ASSIGNED: "#0dcaf0",
+  RESOLVED: "#0d6efd",
+  REOPENED: "#ffc107",
+  CLOSED: "#212529",
+  WAITING: "#dc3545",
 };
 
-function renderCharts() {
+const PRIORITY_COLOR: Record<Priority, string> = {
+  LOW: "#6c757d",
+  MEDIUM: "#0dcaf0",
+  HIGH: "#ffc107",
+  URGENT: "#dc3545",
+};
+
+export type DashboardChartsProps = {
+  trend: TrendPoint[];
+  statusBreakdown: { status: TicketStatus; count: number }[];
+  priorityBreakdown: { priority: Priority; count: number }[];
+};
+
+function renderCharts(props: DashboardChartsProps) {
   const ApexCharts = window.ApexCharts;
 
-  const salesChartEl = document.querySelector("#sales-chart");
-  if (salesChartEl) {
-    new ApexCharts(salesChartEl, {
+  const trendEl = document.querySelector("#ticket-trend-chart");
+  if (trendEl) {
+    new ApexCharts(trendEl, {
       series: [
-        { name: "Digital Goods", data: [28, 48, 40, 19, 86, 27, 90] },
-        { name: "Electronics", data: [65, 59, 80, 81, 56, 55, 40] },
+        { name: "Created", data: props.trend.map((p) => p.created) },
+        { name: "Closed", data: props.trend.map((p) => p.closed) },
       ],
-      chart: { height: 180, type: "area", toolbar: { show: false } },
-      legend: { show: false },
-      colors: ["#0d6efd", "#20c997"],
+      chart: { height: 220, type: "area", toolbar: { show: false } },
+      legend: { show: true, position: "top" },
+      colors: ["#0d6efd", "#198754"],
       dataLabels: { enabled: false },
-      stroke: { curve: "smooth" },
+      stroke: { curve: "smooth", width: 2 },
       xaxis: {
         type: "datetime",
-        categories: [
-          "2023-01-01",
-          "2023-02-01",
-          "2023-03-01",
-          "2023-04-01",
-          "2023-05-01",
-          "2023-06-01",
-          "2023-07-01",
-        ],
+        categories: props.trend.map((p) => p.date),
       },
-      tooltip: { x: { format: "MMMM yyyy" } },
+      tooltip: { x: { format: "d MMM" } },
     }).render();
   }
 
-  for (const [id, data] of Object.entries(SPARKLINE_DATA)) {
-    const el = document.querySelector(`#${id}`);
-    if (!el) continue;
-    new ApexCharts(el, {
-      series: [{ data }],
-      chart: { type: "line", width: 150, height: 30, sparkline: { enabled: true } },
-      colors: ["var(--bs-primary)"],
-      stroke: { width: 2 },
-      tooltip: {
-        fixed: { enabled: false },
-        x: { show: false },
-        y: { title: { formatter: () => "" } },
-        marker: { show: false },
-      },
+  const statusEl = document.querySelector("#status-donut-chart");
+  const statusData = props.statusBreakdown.filter((s) => s.count > 0);
+  if (statusEl && statusData.length > 0) {
+    new ApexCharts(statusEl, {
+      series: statusData.map((s) => s.count),
+      chart: { type: "donut", height: 260 },
+      labels: statusData.map((s) => s.status),
+      colors: statusData.map((s) => STATUS_COLOR[s.status]),
+      dataLabels: { enabled: true },
+      legend: { position: "bottom" },
     }).render();
+  } else if (statusEl) {
+    statusEl.innerHTML = '<p class="text-secondary text-center mb-0 py-5">No tickets yet.</p>';
   }
 
-  const pieChartEl = document.querySelector("#pie-chart");
-  if (pieChartEl) {
-    new ApexCharts(pieChartEl, {
-      series: [700, 500, 400, 600, 300, 100],
-      chart: { type: "donut", height: 350 },
-      labels: ["Chrome", "Edge", "FireFox", "Safari", "Opera", "IE"],
-      dataLabels: { enabled: false },
-      colors: ["#0d6efd", "#20c997", "#ffc107", "#d63384", "#6f42c1", "#adb5bd"],
+  const priorityEl = document.querySelector("#priority-bar-chart");
+  const priorityData = props.priorityBreakdown;
+  if (priorityEl) {
+    new ApexCharts(priorityEl, {
+      series: [{ name: "Open tickets", data: priorityData.map((p) => p.count) }],
+      chart: { type: "bar", height: 260, toolbar: { show: false } },
+      plotOptions: { bar: { horizontal: true, distributed: true, borderRadius: 4 } },
+      colors: priorityData.map((p) => PRIORITY_COLOR[p.priority]),
+      dataLabels: { enabled: true },
+      legend: { show: false },
+      xaxis: { categories: priorityData.map((p) => p.priority) },
     }).render();
   }
 }
 
-export function DashboardCharts() {
+export function DashboardCharts(props: DashboardChartsProps) {
   return (
     <>
       <link
@@ -92,7 +102,7 @@ export function DashboardCharts() {
         integrity="sha256-+vh8GkaU7C9/wbSLIcwq82tQ2wTf44aOHA8HlBMwRI8="
         crossOrigin="anonymous"
         strategy="afterInteractive"
-        onLoad={renderCharts}
+        onLoad={() => renderCharts(props)}
       />
     </>
   );

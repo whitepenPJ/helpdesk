@@ -39,8 +39,8 @@ export type TicketMenuCounts = {
 // Badge counts for the sidebar's Ticket / Assigned Ticket / Approval Ticket
 // items. "Incomplete" = anything not yet CLOSED. Assigned Ticket counts
 // tickets assigned to the user's own UserGroup (pool assignment) OR
-// individually to the user (assigneeId — only ADMIN/SUPERVISOR can be picked
-// as an individual assignee). Approval Ticket only applies to supervisors.
+// individually to the user (via TicketAssignee). Approval Ticket only
+// applies to supervisors.
 export async function getTicketMenuCounts(userId: string, role: Role): Promise<TicketMenuCounts> {
   const [ticketCount, me, approvalCount] = await Promise.all([
     prisma.ticket.count({ where: { createdById: userId, status: { not: "CLOSED" } } }),
@@ -53,7 +53,10 @@ export async function getTicketMenuCounts(userId: string, role: Role): Promise<T
   const assignedCount = await prisma.ticket.count({
     where: {
       status: { not: "CLOSED" },
-      OR: [...(me?.userGroupId ? [{ assignedGroupId: me.userGroupId }] : []), { assigneeId: userId }],
+      OR: [
+        ...(me?.userGroupId ? [{ TicketAssignedGroup: { some: { userGroupId: me.userGroupId } } }] : []),
+        { TicketAssignee: { some: { userId } } },
+      ],
     },
   });
 

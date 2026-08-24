@@ -5,6 +5,7 @@ import { requireAdmin } from "@/app/lib/dal";
 import { deleteUserGroup } from "@/app/actions/user-groups";
 import { DeleteButton } from "../../_components/delete-button";
 import { SortableTh } from "../../_components/sortable-th";
+import { Pagination } from "../../_components/pagination";
 import { parseSort, type SortDir } from "@/app/lib/table-sort";
 import type { Prisma } from "@/app/generated/prisma/client";
 
@@ -20,7 +21,7 @@ function buildOrderBy(sortBy: SortColumn, sortDir: SortDir): Prisma.UserGroupOrd
     case "members":
       return { User: { _count: sortDir } };
     case "tickets":
-      return { Ticket: { _count: sortDir } };
+      return { TicketAssignedGroup: { _count: sortDir } };
     default:
       return { [sortBy]: sortDir };
   }
@@ -48,7 +49,7 @@ export default async function UserGroupsPage({ searchParams }: PageProps<"/maste
   const [groups, total] = await Promise.all([
     prisma.userGroup.findMany({
       where,
-      include: { _count: { select: { User: true, Ticket: true } } },
+      include: { _count: { select: { User: true, TicketAssignedGroup: true } } },
       orderBy: buildOrderBy(sortBy, sortDir),
       skip: (currentPage - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
@@ -114,6 +115,7 @@ export default async function UserGroupsPage({ searchParams }: PageProps<"/maste
                           />
                         </div>
                         <button type="submit" className="btn btn-sm btn-outline-secondary">
+                          <i className="bi bi-search me-1" aria-hidden="true"></i>
                           Search
                         </button>
                         <Link href="/master/user-group/new" className="btn btn-sm btn-primary">
@@ -148,7 +150,7 @@ export default async function UserGroupsPage({ searchParams }: PageProps<"/maste
                               </span>
                             </td>
                             <td>{group._count.User}</td>
-                            <td>{group._count.Ticket}</td>
+                            <td>{group._count.TicketAssignedGroup}</td>
                             <td className="text-end">
                               <div className="btn-group btn-group-sm">
                                 <Link
@@ -192,20 +194,11 @@ export default async function UserGroupsPage({ searchParams }: PageProps<"/maste
                     Showing {groups.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1} to{" "}
                     {(currentPage - 1) * PAGE_SIZE + groups.length} of {total} groups
                   </div>
-                  {totalPages > 1 && (
-                    <ul className="pagination pagination-sm m-0 float-end">
-                      {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-                        <li key={p} className={`page-item ${p === currentPage ? "active" : ""}`}>
-                          <Link
-                            className="page-link"
-                            href={{ pathname: "/master/user-group", query: { ...linkQuery, sort: sortBy, dir: sortDir, page: p } }}
-                          >
-                            {p}
-                          </Link>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
+                  <Pagination
+                    currentPage={currentPage}
+                    totalPages={totalPages}
+                    makeHref={(p) => ({ pathname: "/master/user-group", query: { ...linkQuery, sort: sortBy, dir: sortDir, page: p } })}
+                  />
                 </div>
               </div>
             </div>
