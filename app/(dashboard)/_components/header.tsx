@@ -2,8 +2,7 @@ import type { CSSProperties } from "react";
 import Link from "next/link";
 import { auth } from "@/auth";
 import { logout } from "@/app/actions/auth";
-import { getRecentTicketActivity, getTicketActivityHref, type TicketActivityItem } from "@/app/lib/notifications";
-import type { Role } from "@/app/generated/prisma/client";
+import { getRecentTicketActivity, type TicketActivityItem } from "@/app/lib/notifications";
 import { NotificationBell } from "./notification-bell";
 import { NotificationSubscribe } from "./notification-subscribe";
 import { NotificationPoller } from "./notification-poller";
@@ -18,18 +17,12 @@ function formatRelativeTime(date: Date): string {
   return `${diffDays} day${diffDays === 1 ? "" : "s"}`;
 }
 
-function NotificationItem({ item, role }: { item: TicketActivityItem; role: Role }) {
+function NotificationItem({ item }: { item: TicketActivityItem }) {
   return (
-    <Link href={getTicketActivityHref(item, role)} className="dropdown-item d-flex align-items-start gap-2">
+    <Link href={item.href} className="dropdown-item d-flex align-items-start gap-2">
       <i className="bi bi-ticket-perforated mt-1" aria-hidden="true"></i>
       <span className="flex-grow-1" style={{ whiteSpace: "normal" }}>
-        <span className="fw-medium">{item.ticketNumber}</span> {item.action}
-        {item.previousState && item.newState && (
-          <span className="text-secondary">
-            {" "}
-            ({item.previousState} → {item.newState})
-          </span>
-        )}
+        {item.message}
       </span>
       <span className="text-secondary fs-7 text-nowrap">{formatRelativeTime(item.timestamp)}</span>
     </Link>
@@ -41,7 +34,7 @@ export async function Header() {
   const user = session?.user;
   const displayName = user?.name ?? user?.email ?? "Account";
   const { items: notifications, unreadCount } = user
-    ? await getRecentTicketActivity(user.id, user.role)
+    ? await getRecentTicketActivity(user.id)
     : { items: [], unreadCount: 0 };
 
   return (
@@ -61,17 +54,17 @@ export async function Header() {
           </li>
         </ul>
 
-        <form className="navbar-search d-none d-md-block w-100 ms-3" role="search">
+        <form className="navbar-search d-none d-md-block w-100 ms-3" role="search" action="/search" method="get">
           <div className="input-group input-group-sm">
             <label htmlFor="navbar-search-input" className="visually-hidden">
-              Search
+              Search tickets
             </label>
             <input
               type="search"
               id="navbar-search-input"
               name="q"
               className="form-control"
-              placeholder="Search…"
+              placeholder="Search tickets by no, title, user, department, company…"
             />
             <button className="btn btn-outline-secondary" type="submit" aria-label="Submit search">
               <i className="bi bi-search" aria-hidden="true"></i>
@@ -99,7 +92,7 @@ export async function Header() {
                 <>
                   <div className="dropdown-divider"></div>
                   {notifications.map((item) => (
-                    <NotificationItem key={item.id} item={item} role={user?.role ?? "USER"} />
+                    <NotificationItem key={item.id} item={item} />
                   ))}
                 </>
               )}

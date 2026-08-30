@@ -1,4 +1,5 @@
 import type { TicketStatus, Priority } from "@/app/generated/prisma/client";
+import type { SearchProgram } from "@/app/lib/ticket-search";
 
 export const STATUS_BADGE: Record<TicketStatus, string> = {
   NEW: "text-bg-secondary",
@@ -21,3 +22,10 @@ export const PRIORITY_BADGE: Record<Priority, string> = {
 export const STATUSES: TicketStatus[] = ["NEW", "WAITING", "REOPENED", "RESOLVED", "ASSIGNED", "CLOSED"];
 
 export const PRIORITIES: Priority[] = ["LOW", "MEDIUM", "HIGH", "URGENT"];
+
+export const PROGRAM_BADGE: Record<SearchProgram, string> = {
+  Ticket: "text-bg-secondary",
+  "Assign Ticket": "text-bg-info",
+  "Approval Ticket": "text-bg-warning",
+  "Ticket Management": "text-bg-dark",
+};
