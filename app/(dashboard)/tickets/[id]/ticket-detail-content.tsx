@@ -118,7 +118,9 @@ export async function TicketDetailContent({
     include: {
       Category: true,
       Company: true,
-      Department: { include: { User_Department_supervisorIdToUser: { select: { name: true, email: true } } } },
+      Department: {
+        include: { DepartmentApprover: { select: { userId: true, User: { select: { name: true, email: true } } } } },
+      },
       User_Ticket_createdByIdToUser: { select: { name: true, email: true } },
       TicketAssignee: { select: { userId: true, User: { select: { name: true, email: true } } } },
       TicketAssignedGroup: { select: { userGroupId: true } },
@@ -126,6 +128,12 @@ export async function TicketDetailContent({
   });
 
   if (!ticket) {
+    notFound();
+  }
+
+  // Deleted tickets are admin-only (via Ticket Management's "Show deleted"
+  // filter) — invisible everywhere else, regardless of ownership/assignment.
+  if (ticket.deletedAt && !isAdmin) {
     notFound();
   }
 
@@ -150,7 +158,10 @@ export async function TicketDetailContent({
       User: { select: { name: true } },
     },
   });
-  const isSupervisor = approval?.supervisorId === session.user.id;
+  // Any of the department's approvers can act on a pending request — not
+  // just whoever's recorded on approval.supervisorId (that's null until
+  // someone actually decides; see decideTicketApproval).
+  const isSupervisor = ticket.Department.DepartmentApprover.some((a) => a.userId === session.user.id);
 
   if (!isAdmin) {
     let isVisible = isOwner || isAssignee;
@@ -234,7 +245,7 @@ export async function TicketDetailContent({
                   <i className="bi bi-check-circle-fill mt-1" aria-hidden="true"></i>
                   <div>
                     <div>
-                      Approved by <strong>{approval.User.name}</strong> (Supervisor) at{" "}
+                      Approved by <strong>{approval.User?.name ?? "an approver"}</strong> (Approver) at{" "}
                       {formatDateTime(approval.decidedAt)}
                     </div>
                     {approval.comments && <div className="text-secondary mt-1">{approval.comments}</div>}
@@ -449,8 +460,8 @@ export async function TicketDetailContent({
                               {group.entries.map((entry) => {
                                 const { icon, color } = historyIcon(entry.action);
                                 const hasBody = Boolean(entry.previousState || entry.newState);
-                                // "Closed by X (Supervisor): ..." / "Approved by X
-                                // (Supervisor)" already name the actor — prefixing
+                                // "Closed by X (Approver): ..." / "Approved by X
+                                // (Approver)" already name the actor — prefixing
                                 // "X — " too would just repeat the name.
                                 const actionNamesActor =
                                   entry.action.startsWith("Closed by ") || entry.action.startsWith("Approved by ");
@@ -493,7 +504,7 @@ export async function TicketDetailContent({
                 </div>
 
                 <div className="card-footer d-flex gap-2 justify-content-end align-items-center">
-                  {isAdmin && ticket.status !== "CLOSED" && (
+                  {isAdmin && !assigneeActionsGate && ticket.status !== "CLOSED" && (
                     <AssignButton
                       ticketId={ticket.id}
                       status={ticket.status}
@@ -505,18 +516,17 @@ export async function TicketDetailContent({
                     />
                   )}
                   {(isAdmin || isAssignee) &&
-                    ticket.status !== "CLOSED" &&
                     showAssigneeActions &&
                     (ticket.status === "WAITING" ? (
-                      <span className="text-secondary fs-7">Awaiting supervisor approval</span>
-                    ) : (
+                      <span className="text-secondary fs-7">Awaiting approver approval</span>
+                    ) : ticket.status === "ASSIGNED" ? (
                       <RequestApprovalButton
                         ticketId={ticket.id}
                         companyId={ticket.companyId}
-                        supervisor={ticket.Department.User_Department_supervisorIdToUser}
+                        approvers={ticket.Department.DepartmentApprover.map((a) => a.User)}
                         redirectOnSuccessTo={assigneeActionsRedirect}
                       />
-                    ))}
+                    ) : null)}
                   {isAssignee && ticket.status === "ASSIGNED" && showAssigneeActions && (
                     <>
                       <MarkResolvedButton ticketId={ticket.id} redirectOnSuccessTo={assigneeActionsRedirect} />

@@ -4,23 +4,24 @@ import { requireUser } from "@/app/lib/dal";
 import { getTicketActivityPage } from "@/app/lib/notifications";
 import { formatDateTime } from "@/app/lib/date-format";
 import { Pagination } from "../_components/pagination";
+import { PageSizeSelect } from "../_components/page-size-select";
+import { parsePageSize } from "@/app/lib/page-size";
 
 export const metadata: Metadata = { title: "Notifications" };
-
-const PAGE_SIZE = 20;
 
 export default async function NotificationsPage({ searchParams }: PageProps<"/notifications">) {
   const session = await requireUser();
 
-  const { page } = await searchParams;
+  const { page, pageSize: pageSizeParam } = await searchParams;
+  const pageSize = parsePageSize(typeof pageSizeParam === "string" ? pageSizeParam : undefined);
   const currentPage = Math.max(1, Number(page) || 1);
 
   const { items, total } = await getTicketActivityPage(session.user.id, {
-    skip: (currentPage - 1) * PAGE_SIZE,
-    take: PAGE_SIZE,
+    skip: (currentPage - 1) * pageSize,
+    take: pageSize,
   });
 
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   return (
     <>
@@ -70,15 +71,19 @@ export default async function NotificationsPage({ searchParams }: PageProps<"/no
                     </ul>
                   )}
                 </div>
-                <div className="card-footer clearfix">
-                  <div className="float-start pt-1 fs-7 text-body-secondary">
-                    Showing {items.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1} to{" "}
-                    {(currentPage - 1) * PAGE_SIZE + items.length} of {total} notifications
+                <div className="card-footer d-flex flex-wrap justify-content-between align-items-center gap-2">
+                  <div className="d-flex flex-wrap align-items-center gap-3">
+                    <div className="fs-7 text-body-secondary">
+                      Showing {items.length === 0 ? 0 : (currentPage - 1) * pageSize + 1} to{" "}
+                      {(currentPage - 1) * pageSize + items.length} of {total} notifications
+                    </div>
+                    <PageSizeSelect pageSize={pageSize} />
                   </div>
                   <Pagination
                     currentPage={currentPage}
                     totalPages={totalPages}
-                    makeHref={(p) => ({ pathname: "/notifications", query: { page: p } })}
+                    className="pagination pagination-sm m-0"
+                    makeHref={(p) => ({ pathname: "/notifications", query: { page: p, pageSize: String(pageSize) } })}
                   />
                 </div>
               </div>

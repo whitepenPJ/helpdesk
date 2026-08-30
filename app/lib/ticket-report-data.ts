@@ -47,6 +47,7 @@ function monthKey(date: Date): string {
 
 export async function getTicketReportData(dateFrom: Date | null, dateTo: Date | null): Promise<TicketReportData> {
   const where: Prisma.TicketWhereInput = {
+    deletedAt: null,
     ...(dateFrom || dateTo
       ? {
           transactionDate: {

@@ -63,6 +63,7 @@ export default async function EditUserPage({ params }: PageProps<"/master/user/[
                   status: user.status === "SUSPENDED" ? "INACTIVE" : user.status,
                   companyId: user.companyId ?? "",
                   departmentId: user.departmentId ?? "",
+                  canOpenTicketForOthers: user.canOpenTicketForOthers,
                 }}
                 companies={companies.map((c) => ({ value: c.id, label: c.name }))}
                 departments={departments.map((d) => ({ value: d.id, label: d.name, companyId: d.companyId }))}

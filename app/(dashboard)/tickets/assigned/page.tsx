@@ -4,14 +4,15 @@ import { prisma } from "@/app/lib/db";
 import { requireUser } from "@/app/lib/dal";
 import { SortableTh } from "../../_components/sortable-th";
 import { Pagination } from "../../_components/pagination";
+import { PageSizeSelect } from "../../_components/page-size-select";
 import { type SortDir } from "@/app/lib/table-sort";
 import { Prisma, type TicketStatus } from "@/app/generated/prisma/client";
 import { STATUS_BADGE, PRIORITY_BADGE, STATUSES } from "../ticket-badges";
 import { formatDateTime } from "@/app/lib/date-format";
+import { TicketTimelineButton } from "../../_components/ticket-timeline-button";
+import { parsePageSize } from "@/app/lib/page-size";
 
 export const metadata: Metadata = { title: "Assigned Ticket" };
-
-const PAGE_SIZE = 10;
 
 const SORT_COLUMNS = ["ticketNumber", "title", "category", "company", "priority", "status", "transactionDate"] as const;
 type SortColumn = (typeof SORT_COLUMNS)[number];
@@ -32,11 +33,12 @@ export default async function AssignedTicketsPage({ searchParams }: PageProps<"/
 
   const me = await prisma.user.findUnique({ where: { id: session.user.id }, select: { userGroupId: true } });
 
-  const { q, status, page, sort, dir } = await searchParams;
+  const { q, status, page, pageSize: pageSizeParam, sort, dir } = await searchParams;
   const query = typeof q === "string" ? q : "";
   const statusFilter = typeof status === "string" && status !== "all" ? (status as TicketStatus) : "";
+  const pageSize = parsePageSize(typeof pageSizeParam === "string" ? pageSizeParam : undefined);
   const currentPage = Math.max(1, Number(page) || 1);
-  const skip = (currentPage - 1) * PAGE_SIZE;
+  const skip = (currentPage - 1) * pageSize;
   const sortParam = typeof sort === "string" ? sort : undefined;
   const isSorted = sortParam !== undefined && (SORT_COLUMNS as readonly string[]).includes(sortParam);
   const sortBy = isSorted ? (sortParam as SortColumn) : "transactionDate";
@@ -51,6 +53,7 @@ export default async function AssignedTicketsPage({ searchParams }: PageProps<"/
   // second top-level OR, which would just overwrite this one.
   const where: Prisma.TicketWhereInput = {
     AND: [
+      { deletedAt: null },
       {
         OR: [
           ...(me?.userGroupId ? [{ TicketAssignedGroup: { some: { userGroupId: me.userGroupId } } }] : []),
@@ -71,7 +74,12 @@ export default async function AssignedTicketsPage({ searchParams }: PageProps<"/
     ],
   };
 
-  const ticketInclude = { Category: true, Company: true, Department: true } satisfies Prisma.TicketInclude;
+  const ticketInclude = {
+    Category: true,
+    Company: true,
+    Department: true,
+    TicketHistory: { orderBy: { timestamp: "asc" }, include: { User: { select: { name: true } } } },
+  } satisfies Prisma.TicketInclude;
 
   let tickets: Prisma.TicketGetPayload<{ include: typeof ticketInclude }>[];
   let total: number;
@@ -83,7 +91,7 @@ export default async function AssignedTicketsPage({ searchParams }: PageProps<"/
         include: ticketInclude,
         orderBy: buildOrderBy(sortBy, sortDir),
         skip,
-        take: PAGE_SIZE,
+        take: pageSize,
       }),
       prisma.ticket.count({ where }),
     ]);
@@ -105,7 +113,8 @@ export default async function AssignedTicketsPage({ searchParams }: PageProps<"/
     const [idRows, count] = await Promise.all([
       prisma.$queryRaw<{ id: string }[]>(Prisma.sql`
         SELECT id FROM "Ticket"
-        WHERE (
+        WHERE "deletedAt" IS NULL
+        AND (
           EXISTS (SELECT 1 FROM "TicketAssignee" ta WHERE ta."ticketId" = "Ticket".id AND ta."userId" = ${session.user.id})
           ${groupFragment}
         )
@@ -117,7 +126,7 @@ export default async function AssignedTicketsPage({ searchParams }: PageProps<"/
           END,
           CASE priority WHEN 'URGENT' THEN 0 WHEN 'HIGH' THEN 1 WHEN 'MEDIUM' THEN 2 WHEN 'LOW' THEN 3 END,
           "transactionDate" DESC
-        LIMIT ${PAGE_SIZE} OFFSET ${skip}
+        LIMIT ${pageSize} OFFSET ${skip}
       `),
       prisma.ticket.count({ where }),
     ]);
@@ -129,8 +138,12 @@ export default async function AssignedTicketsPage({ searchParams }: PageProps<"/
     tickets = orderedIds.map((id) => ticketsById.get(id)).filter((t): t is NonNullable<typeof t> => Boolean(t));
   }
 
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const linkQuery = { ...(query ? { q: query } : {}), ...(statusFilter ? { status: statusFilter } : {}) };
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const linkQuery = {
+    ...(query ? { q: query } : {}),
+    ...(statusFilter ? { status: statusFilter } : {}),
+    pageSize: String(pageSize),
+  };
 
   return (
     <>
@@ -251,6 +264,17 @@ export default async function AssignedTicketsPage({ searchParams }: PageProps<"/
                                     <i className="bi bi-pencil" aria-hidden="true"></i>
                                   </Link>
                                 )}
+                                <TicketTimelineButton
+                                  ticketNumber={ticket.ticketNumber}
+                                  entries={ticket.TicketHistory.map((h) => ({
+                                    id: h.id,
+                                    action: h.action,
+                                    previousState: h.previousState,
+                                    newState: h.newState,
+                                    timestamp: h.timestamp,
+                                    actorName: h.User?.name ?? null,
+                                  }))}
+                                />
                               </div>
                             </td>
                           </tr>
@@ -266,14 +290,18 @@ export default async function AssignedTicketsPage({ searchParams }: PageProps<"/
                     </table>
                   </div>
                 </div>
-                <div className="card-footer clearfix">
-                  <div className="float-start pt-1 fs-7 text-body-secondary">
-                    Showing {tickets.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1} to{" "}
-                    {(currentPage - 1) * PAGE_SIZE + tickets.length} of {total} tickets
+                <div className="card-footer d-flex flex-wrap justify-content-between align-items-center gap-2">
+                  <div className="d-flex flex-wrap align-items-center gap-3">
+                    <div className="fs-7 text-body-secondary">
+                      Showing {tickets.length === 0 ? 0 : (currentPage - 1) * pageSize + 1} to{" "}
+                      {(currentPage - 1) * pageSize + tickets.length} of {total} tickets
+                    </div>
+                    <PageSizeSelect pageSize={pageSize} />
                   </div>
                   <Pagination
                     currentPage={currentPage}
                     totalPages={totalPages}
+                    className="pagination pagination-sm m-0"
                     makeHref={(p) => ({
                       pathname: "/tickets/assigned",
                       query: { ...linkQuery, sort: sortBy, dir: sortDir, page: p },

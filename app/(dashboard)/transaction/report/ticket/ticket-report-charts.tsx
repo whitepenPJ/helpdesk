@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Script from "next/script";
 import type { MonthlySatisfaction, RatingDistributionRow } from "@/app/lib/ticket-report-data";
+import { getChartTheme, contrastDataLabelStyle } from "../../../_components/chart-theme";
 
 declare global {
   interface Window {
@@ -14,16 +15,23 @@ const RATING_COLORS = ["#dc3545", "#fd7e14", "#ffc107", "#0dcaf0", "#198754"];
 
 function renderCharts(ratingDistribution: RatingDistributionRow[], monthly: MonthlySatisfaction[]) {
   const ApexCharts = window.ApexCharts;
+  const { mode, foreColor, gridColor } = getChartTheme();
 
   const pieEl = document.querySelector("#ticket-report-rating-pie");
   const pieData = ratingDistribution.filter((r) => r.count > 0);
   if (pieEl && pieData.length > 0) {
+    const colors = pieData.map((r) => RATING_COLORS[r.score - 1]);
     new ApexCharts(pieEl, {
       series: pieData.map((r) => r.count),
-      chart: { type: "pie", height: 300 },
+      chart: { type: "pie", height: 300, background: "transparent", foreColor },
+      theme: { mode },
       labels: pieData.map((r) => `${r.label} (${r.percent.toFixed(0)}%)`),
-      colors: pieData.map((r) => RATING_COLORS[r.score - 1]),
-      dataLabels: { enabled: true, formatter: (val: number) => `${val.toFixed(0)}%` },
+      colors,
+      dataLabels: {
+        enabled: true,
+        formatter: (val: number) => `${val.toFixed(0)}%`,
+        ...contrastDataLabelStyle(colors),
+      },
       legend: { position: "bottom" },
     }).render();
   } else if (pieEl) {
@@ -34,10 +42,12 @@ function renderCharts(ratingDistribution: RatingDistributionRow[], monthly: Mont
   if (monthEl && monthly.length > 0) {
     new ApexCharts(monthEl, {
       series: [{ name: "Avg Satisfaction", data: monthly.map((m) => (m.avgRating !== null ? Number(m.avgRating.toFixed(2)) : 0)) }],
-      chart: { type: "bar", height: 280, toolbar: { show: false } },
+      chart: { type: "bar", height: 280, toolbar: { show: false }, background: "transparent", foreColor },
+      theme: { mode },
+      grid: { borderColor: gridColor },
       plotOptions: { bar: { borderRadius: 4 } },
       colors: ["#0d6efd"],
-      dataLabels: { enabled: true },
+      dataLabels: { enabled: true, ...contrastDataLabelStyle(monthly.map(() => "#0d6efd")) },
       yaxis: { min: 0, max: 5, title: { text: "Avg Rating (1-5)" } },
       xaxis: { categories: monthly.map((m) => m.month) },
     }).render();

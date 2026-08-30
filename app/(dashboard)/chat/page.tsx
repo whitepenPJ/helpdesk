@@ -48,15 +48,31 @@ export default async function ChatPage() {
 
   // Same data tickets/new/page.tsx fetches — needed to pass through to the
   // TicketForm embedded here once the chat's ticket-creation handoff fires.
-  const [categories, companies, departments, profile, users] = await Promise.all([
+  const [categories, profile] = await Promise.all([
     prisma.category.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
-    prisma.company.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
-    prisma.department.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, companyId: true } }),
-    prisma.user.findUnique({ where: { id: session.user.id }, select: { companyId: true, departmentId: true } }),
-    isAdmin
-      ? prisma.user.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, email: true } })
-      : prisma.user.findMany({ where: { id: session.user.id }, select: { id: true, name: true, email: true } }),
+    prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { canOpenTicketForOthers: true },
+    }),
   ]);
+
+  const canChangeCreator = isAdmin || Boolean(profile?.canOpenTicketForOthers);
+  const userSelect = {
+    id: true,
+    name: true,
+    email: true,
+    telephone: true,
+    Company: { select: { name: true } },
+    Department_User_departmentIdToDepartment: {
+      select: {
+        name: true,
+        DepartmentApprover: { select: { User: { select: { name: true, email: true } } } },
+      },
+    },
+  } as const;
+  const users = await (canChangeCreator
+    ? prisma.user.findMany({ orderBy: { name: "asc" }, select: userSelect })
+    : prisma.user.findMany({ where: { id: session.user.id }, select: userSelect }));
 
   return (
     <>
@@ -89,13 +105,16 @@ export default async function ChatPage() {
               <ChatPanel
                 ticketFormProps={{
                   categories: categories.map((c) => ({ value: c.id, label: c.name })),
-                  companies: companies.map((c) => ({ value: c.id, label: c.name })),
-                  departments: departments.map((d) => ({ value: d.id, label: d.name, companyId: d.companyId })),
-                  users: users.map((u) => ({ value: u.id, label: `${u.name} (${u.email})` })),
-                  defaultCompanyId: profile?.companyId ?? undefined,
-                  defaultDepartmentId: profile?.departmentId ?? undefined,
+                  users: users.map((u) => ({
+                    value: u.id,
+                    label: `${u.name} (${u.email})`,
+                    companyName: u.Company?.name ?? null,
+                    departmentName: u.Department_User_departmentIdToDepartment?.name ?? null,
+                    telephone: u.telephone,
+                    approvers: (u.Department_User_departmentIdToDepartment?.DepartmentApprover ?? []).map((a) => a.User),
+                  })),
                   defaultCreatorId: session.user.id,
-                  canChangeCreator: isAdmin,
+                  canChangeCreator,
                 }}
               />
             </div>

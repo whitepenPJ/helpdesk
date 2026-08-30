@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/app/lib/db";
 import { requireUser } from "@/app/lib/dal";
 import { excerpt } from "@/app/lib/text";
+import { ROLE_LABEL } from "@/app/lib/roles";
 import { ProfileForm } from "./profile-form";
 import { ApiTokensPanel } from "./api-tokens-panel";
 
@@ -12,10 +13,11 @@ export const metadata: Metadata = { title: "Profile" };
 export default async function ProfilePage() {
   const session = await requireUser();
 
-  const [user, companies, departments, lessonsLearned, apiTokens] = await Promise.all([
-    prisma.user.findUnique({ where: { id: session.user.id } }),
-    prisma.company.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
-    prisma.department.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, companyId: true } }),
+  const [user, lessonsLearned, apiTokens] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: session.user.id },
+      include: { Company: { select: { name: true } }, Department_User_departmentIdToDepartment: { select: { name: true } } },
+    }),
     prisma.lessonLearned.findMany({
       where: { isActive: true },
       orderBy: { createdAt: "desc" },
@@ -65,15 +67,13 @@ export default async function ProfilePage() {
             <div className="col-12">
               <ProfileForm
                 email={user.email}
-                role={user.role}
+                role={ROLE_LABEL[user.role]}
                 hasPassword={Boolean(user.passwordHash)}
-                companies={companies.map((c) => ({ value: c.id, label: c.name }))}
-                departments={departments.map((d) => ({ value: d.id, label: d.name, companyId: d.companyId }))}
+                companyName={user.Company?.name ?? null}
+                departmentName={user.Department_User_departmentIdToDepartment?.name ?? null}
                 initialValues={{
                   name: user.name,
                   telephone: user.telephone ?? "",
-                  companyId: user.companyId ?? "",
-                  departmentId: user.departmentId ?? "",
                 }}
               />
             </div>

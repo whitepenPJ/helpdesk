@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { AssignButton } from "../../../_components/assign-modal";
 import { RequestApprovalButton } from "../../../_components/request-approval-modal";
+import { TicketTimelineButton, type TicketTimelineEntry } from "../../../_components/ticket-timeline-button";
+import { DeleteTicketButton } from "../../../tickets/delete-ticket-button";
 import type { TicketStatus, Priority } from "@/app/generated/prisma/client";
 
 type Option = { id: string; name: string };
-type Supervisor = { name: string; email: string } | null;
+type Approver = { name: string; email: string };
 
 export type ModalTicket = {
   id: string;
@@ -14,7 +16,8 @@ export type ModalTicket = {
   companyId: string;
   assigneeIds: string[];
   assignedGroupIds: string[];
-  supervisor: Supervisor;
+  approvers: Approver[];
+  deletedAt: Date | null;
 };
 
 // View lands on /transaction/ticket-management/[id] (a thin wrapper around
@@ -25,10 +28,12 @@ export type ModalTicket = {
 // "Request Approve" button) share one implementation each.
 export function TicketRowActions({
   ticket,
+  history,
   assignees,
   groups,
 }: {
   ticket: ModalTicket;
+  history: TicketTimelineEntry[];
   assignees: Option[];
   groups: Option[];
 }) {
@@ -42,42 +47,52 @@ export function TicketRowActions({
       >
         <i className="bi bi-eye" aria-hidden="true"></i>
       </Link>
-      {ticket.status !== "CLOSED" && (
-        <div className="btn-group">
-          <button
-            type="button"
-            className="btn btn-sm btn-outline-secondary dropdown-toggle"
-            data-bs-toggle="dropdown"
-            aria-expanded="false"
-            aria-label={`More actions for ${ticket.ticketNumber}`}
-          >
-            <i className="bi bi-three-dots-vertical" aria-hidden="true"></i>
-          </button>
-          <ul className="dropdown-menu dropdown-menu-end">
+      <div className="btn-group">
+        <button
+          type="button"
+          className="btn btn-sm btn-outline-secondary dropdown-toggle"
+          data-bs-toggle="dropdown"
+          aria-expanded="false"
+          aria-label={`More actions for ${ticket.ticketNumber}`}
+        >
+          <i className="bi bi-three-dots-vertical" aria-hidden="true"></i>
+        </button>
+        <ul className="dropdown-menu dropdown-menu-end">
+          {ticket.status !== "CLOSED" && (
+            <>
+              <li>
+                <AssignButton
+                  ticketId={ticket.id}
+                  status={ticket.status}
+                  priority={ticket.priority}
+                  assigneeIds={ticket.assigneeIds}
+                  assignedGroupIds={ticket.assignedGroupIds}
+                  assignees={assignees}
+                  groups={groups}
+                  variant="dropdown-item"
+                />
+              </li>
+              <li>
+                <RequestApprovalButton
+                  ticketId={ticket.id}
+                  companyId={ticket.companyId}
+                  approvers={ticket.approvers}
+                  disabled={ticket.status === "WAITING"}
+                  variant="dropdown-item"
+                />
+              </li>
+            </>
+          )}
+          <li>
+            <TicketTimelineButton ticketNumber={ticket.ticketNumber} entries={history} variant="dropdown-item" />
+          </li>
+          {!ticket.deletedAt && (
             <li>
-              <AssignButton
-                ticketId={ticket.id}
-                status={ticket.status}
-                priority={ticket.priority}
-                assigneeIds={ticket.assigneeIds}
-                assignedGroupIds={ticket.assignedGroupIds}
-                assignees={assignees}
-                groups={groups}
-                variant="dropdown-item"
-              />
+              <DeleteTicketButton ticketId={ticket.id} ticketNumber={ticket.ticketNumber} variant="dropdown-item" />
             </li>
-            <li>
-              <RequestApprovalButton
-                ticketId={ticket.id}
-                companyId={ticket.companyId}
-                supervisor={ticket.supervisor}
-                disabled={ticket.status === "WAITING"}
-                variant="dropdown-item"
-              />
-            </li>
-          </ul>
-        </div>
-      )}
+          )}
+        </ul>
+      </div>
     </div>
   );
 }

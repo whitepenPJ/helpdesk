@@ -29,6 +29,7 @@ export function UserForm({
     status: string;
     companyId: string;
     departmentId: string;
+    canOpenTicketForOthers: boolean;
   };
   companies: Option[];
   departments: (Option & { companyId: string })[];
@@ -45,6 +46,7 @@ export function UserForm({
   const emailValue = values?.email ?? initialValues?.email;
   const roleValue = values?.role ?? initialValues?.role;
   const statusValue = values?.status ?? initialValues?.status ?? "ACTIVE";
+  const canOpenTicketForOthersValue = values?.canOpenTicketForOthers ?? initialValues?.canOpenTicketForOthers ?? false;
 
   // Department belongs to a company, so it can't be chosen until a company
   // is — the dropdown re-mounts (via `key`) whenever the company changes so
@@ -141,7 +143,7 @@ export function UserForm({
                 placeholder="Select a role"
                 options={[
                   { value: "ADMIN", label: "Admin" },
-                  { value: "SUPERVISOR", label: "Supervisor" },
+                  { value: "SUPERVISOR", label: "Approver" },
                   { value: "USER", label: "User" },
                 ]}
               />
@@ -192,6 +194,29 @@ export function UserForm({
                 disabled={isView || !companyId}
               />
               <FieldError messages={state?.errors?.departmentId} />
+            </div>
+
+            <div className="col-12">
+              <label className="form-label fw-bold d-block">Options</label>
+              <div className="border rounded p-3">
+                <div className="form-check">
+                  <input
+                    className="form-check-input"
+                    type="checkbox"
+                    id="canOpenTicketForOthers"
+                    name="canOpenTicketForOthers"
+                    value="true"
+                    defaultChecked={canOpenTicketForOthersValue}
+                    disabled={isView}
+                  />
+                  <label className="form-check-label" htmlFor="canOpenTicketForOthers">
+                    Open Ticket for Other User
+                  </label>
+                  <div className="form-text">
+                    Lets this user pick anyone as the Requestor when filing a new ticket, instead of only themselves.
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>

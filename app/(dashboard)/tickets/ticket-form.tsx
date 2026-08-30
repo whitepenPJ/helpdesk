@@ -12,6 +12,13 @@ import { toDateTimeLocalValue } from "@/app/lib/date-format";
 
 type Option = { value: string; label: string };
 
+type CreatorOption = Option & {
+  companyName: string | null;
+  departmentName: string | null;
+  telephone: string | null;
+  approvers: { name: string; email: string }[];
+};
+
 function FieldError({ messages }: { messages?: string[] }) {
   if (!messages?.length) return null;
   return <div className="text-danger small mt-1">{messages[0]}</div>;
@@ -19,22 +26,17 @@ function FieldError({ messages }: { messages?: string[] }) {
 
 export function TicketForm({
   categories,
-  companies,
-  departments,
   users,
-  defaultCompanyId,
-  defaultDepartmentId,
   defaultCreatorId,
   canChangeCreator,
   defaultTitle,
   defaultDescription,
 }: {
   categories: Option[];
-  companies: Option[];
-  departments: (Option & { companyId: string })[];
-  users: Option[];
-  defaultCompanyId?: string;
-  defaultDepartmentId?: string;
+  /** Company/Department/Telephone all follow whichever of these is
+   * selected as Creator — see the "ห้ามเปลี่ยน" (Company/Department
+   * can't be changed, shown as a label) requirement. */
+  users: CreatorOption[];
   defaultCreatorId: string;
   canChangeCreator: boolean;
   /** Pre-fill from e.g. the AI chat handoff — no existing caller passes these. */
@@ -50,10 +52,16 @@ export function TicketForm({
   const titleValue = values?.title ?? defaultTitle;
   const descriptionValue = values?.description ?? defaultDescription;
   const categoryIdValue = values?.categoryId;
-  const telephoneValue = values?.telephone;
-  // Only an admin's own submission is ever honored server-side (see
-  // createTicket) — for everyone else this stays locked to their own id.
-  const creatorIdValue = canChangeCreator ? (values?.creatorId ?? defaultCreatorId) : defaultCreatorId;
+  // Only an admin's, or a user with "Open Ticket for Other User", own
+  // submission is ever honored server-side (see createTicket) — for
+  // everyone else this stays locked to their own id.
+  const [creatorId, setCreatorId] = useState(
+    canChangeCreator ? (values?.creatorId ?? defaultCreatorId) : defaultCreatorId
+  );
+  const creator = users.find((u) => u.value === creatorId);
+  const telephoneValue = values?.telephone ?? creator?.telephone ?? "";
+  const approvers = creator?.approvers ?? [];
+  const hasApprover = approvers.length > 0;
 
   // Real Date only once mounted, so server-rendered HTML and the client's
   // first render match exactly (the real creation timestamp is stamped
@@ -62,16 +70,7 @@ export function TicketForm({
   const mounted = useMounted();
   const now = mounted ? new Date() : null;
 
-  // Department belongs to a company, so it can't be chosen until a company
-  // is — same cascading pattern as the Master User form.
-  const [companyId, setCompanyId] = useState(values?.companyId ?? defaultCompanyId ?? "");
-  const departmentOptions = departments
-    .filter((d) => d.companyId === companyId)
-    .map((d) => ({ value: d.value, label: d.label }));
-  const departmentValue =
-    companyId === (values?.companyId ?? defaultCompanyId ?? "")
-      ? (values?.departmentId ?? defaultDepartmentId)
-      : undefined;
+  const [needApproval, setNeedApproval] = useState(false);
 
   // Every field below is uncontrolled (defaultValue only applies at mount),
   // but React's built-in form-action handling resets the form's DOM after
@@ -85,7 +84,12 @@ export function TicketForm({
       <div className="card-header">
         <div className="d-flex flex-wrap justify-content-end align-items-center gap-2">
           <span className="d-flex align-items-center gap-1 fs-7 text-secondary">
-            Status: <span className={`badge ${STATUS_BADGE.NEW}`}>NEW</span>
+            Status:{" "}
+            {needApproval && hasApprover ? (
+              <span className={`badge ${STATUS_BADGE.WAITING}`}>WAITING</span>
+            ) : (
+              <span className={`badge ${STATUS_BADGE.NEW}`}>NEW</span>
+            )}
           </span>
         </div>
       </div>
@@ -124,16 +128,23 @@ export function TicketForm({
 
             <div className="col-md-6">
               <label htmlFor="creatorId" className="form-label">
-                Creator
+                Requestor
               </label>
-              <Select2Select
-                name="creatorId"
-                defaultValue={creatorIdValue}
-                required
-                disabled={!canChangeCreator}
-                placeholder="Select a creator"
-                options={users}
-              />
+              {canChangeCreator ? (
+                <Select2Select
+                  name="creatorId"
+                  defaultValue={creatorId}
+                  required
+                  placeholder="Select a creator"
+                  options={users}
+                  onChange={(value) => setCreatorId((value as string) ?? "")}
+                />
+              ) : (
+                <>
+                  <input type="text" id="creatorId" className="form-control" value={creator?.label ?? ""} disabled readOnly />
+                  <input type="hidden" name="creatorId" value={defaultCreatorId} />
+                </>
+              )}
               <FieldError messages={state?.errors?.creatorId} />
             </div>
             <div className="col-md-6">
@@ -149,11 +160,22 @@ export function TicketForm({
               />
               <FieldError messages={state?.errors?.categoryId} />
             </div>
+
+            <div className="col-md-6">
+              <label className="form-label">Company</label>
+              <input type="text" className="form-control" value={creator?.companyName ?? "—"} disabled readOnly />
+            </div>
+            <div className="col-md-6">
+              <label className="form-label">Department</label>
+              <input type="text" className="form-control" value={creator?.departmentName ?? "—"} disabled readOnly />
+            </div>
+
             <div className="col-md-6">
               <label htmlFor="telephone" className="form-label">
                 Telephone
               </label>
               <input
+                key={creatorId}
                 type="tel"
                 id="telephone"
                 name="telephone"
@@ -183,34 +205,32 @@ export function TicketForm({
               <FieldError messages={state?.errors?.transactionDate} />
             </div>
 
-            <div className="col-md-6">
-              <label htmlFor="companyId" className="form-label">
-                Company
-              </label>
-              <Select2Select
-                name="companyId"
-                defaultValue={companyId}
-                required
-                placeholder="Select a company"
-                options={companies}
-                onChange={(value) => setCompanyId(value as string)}
-              />
-              <FieldError messages={state?.errors?.companyId} />
-            </div>
-            <div className="col-md-6">
-              <label htmlFor="departmentId" className="form-label">
-                Department
-              </label>
-              <Select2Select
-                key={companyId || "no-company"}
-                name="departmentId"
-                defaultValue={departmentValue}
-                required
-                placeholder={companyId ? "Select a department" : "Select a company first"}
-                options={departmentOptions}
-                disabled={!companyId}
-              />
-              <FieldError messages={state?.errors?.departmentId} />
+            <div className="col-12">
+              <div className="form-check">
+                <input
+                  className="form-check-input"
+                  type="checkbox"
+                  id="needApproval"
+                  name="needApproval"
+                  value="true"
+                  checked={needApproval}
+                  onChange={(e) => setNeedApproval(e.target.checked)}
+                  disabled={!hasApprover}
+                />
+                <label className="form-check-label" htmlFor="needApproval">
+                  Need approval
+                </label>
+                <div className="form-text">
+                  {hasApprover ? (
+                    <>
+                      Sends this ticket straight to the department&apos;s approver before anyone else acts on it.
+                      <div>Approver{approvers.length > 1 ? "s" : ""}: {approvers.map((a) => `${a.name} (${a.email})`).join(", ")}</div>
+                    </>
+                  ) : (
+                    "The creator's department has no approver assigned, so this isn't available."
+                  )}
+                </div>
+              </div>
             </div>
 
             <div className="col-12">

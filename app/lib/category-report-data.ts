@@ -27,6 +27,7 @@ export async function getCategoryReportData(dateFrom: Date | null, dateTo: Date 
     prisma.category.findMany({ where: { isActive: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
     prisma.ticket.findMany({
       where: {
+        deletedAt: null,
         ...(dateFrom || dateTo
           ? {
               transactionDate: {

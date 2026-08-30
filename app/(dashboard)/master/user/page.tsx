@@ -4,15 +4,17 @@ import { prisma } from "@/app/lib/db";
 import { requireAdmin } from "@/app/lib/dal";
 import { deleteUser } from "@/app/actions/users";
 import { DeleteButton } from "../../_components/delete-button";
+import { ImportUsersButton } from "./import-users-button";
 import { SortableTh } from "../../_components/sortable-th";
 import { Pagination } from "../../_components/pagination";
+import { PageSizeSelect } from "../../_components/page-size-select";
 import { parseSort, type SortDir } from "@/app/lib/table-sort";
 import type { Prisma, Role } from "@/app/generated/prisma/client";
+import { ROLE_LABEL } from "@/app/lib/roles";
 import { formatDateTime } from "@/app/lib/date-format";
+import { parsePageSize } from "@/app/lib/page-size";
 
 export const metadata: Metadata = { title: "Users" };
-
-const PAGE_SIZE = 10;
 
 const SORT_COLUMNS = ["name", "email", "company", "role", "status", "createdAt"] as const;
 type SortColumn = (typeof SORT_COLUMNS)[number];
@@ -39,9 +41,10 @@ const ERROR_MESSAGES: Record<string, string> = {
 export default async function UsersPage({ searchParams }: PageProps<"/master/user">) {
   await requireAdmin();
 
-  const { q, role, page, error, sort, dir } = await searchParams;
+  const { q, role, page, pageSize: pageSizeParam, error, sort, dir } = await searchParams;
   const query = typeof q === "string" ? q : "";
   const roleFilter = typeof role === "string" && role !== "all" ? role : "";
+  const pageSize = parsePageSize(typeof pageSizeParam === "string" ? pageSizeParam : undefined);
   const currentPage = Math.max(1, Number(page) || 1);
   const { sortBy, sortDir } = parseSort(
     typeof sort === "string" ? sort : undefined,
@@ -67,15 +70,19 @@ export default async function UsersPage({ searchParams }: PageProps<"/master/use
       where,
       include: { Company: true, Department_User_departmentIdToDepartment: true },
       orderBy: buildOrderBy(sortBy, sortDir),
-      skip: (currentPage - 1) * PAGE_SIZE,
-      take: PAGE_SIZE,
+      skip: (currentPage - 1) * pageSize,
+      take: pageSize,
     }),
     prisma.user.count({ where }),
   ]);
 
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const errorMessage = typeof error === "string" ? ERROR_MESSAGES[error] : undefined;
-  const linkQuery = { ...(query ? { q: query } : {}), ...(roleFilter ? { role: roleFilter } : {}) };
+  const linkQuery = {
+    ...(query ? { q: query } : {}),
+    ...(roleFilter ? { role: roleFilter } : {}),
+    pageSize: String(pageSize),
+  };
 
   return (
     <>
@@ -141,13 +148,21 @@ export default async function UsersPage({ searchParams }: PageProps<"/master/use
                         >
                           <option value="all">All roles</option>
                           <option value="ADMIN">Admin</option>
-                          <option value="SUPERVISOR">Supervisor</option>
+                          <option value="SUPERVISOR">Approver</option>
                           <option value="USER">User</option>
                         </select>
                         <button type="submit" className="btn btn-sm btn-outline-secondary">
                           <i className="bi bi-funnel me-1" aria-hidden="true"></i>
                           Filter
                         </button>
+                        <a
+                          href={`/api/master/user/export${query || roleFilter ? `?${new URLSearchParams({ ...(query ? { q: query } : {}), ...(roleFilter ? { role: roleFilter } : {}) }).toString()}` : ""}`}
+                          className="btn btn-sm btn-outline-success"
+                        >
+                          <i className="bi bi-file-earmark-excel me-1" aria-hidden="true"></i>
+                          Export
+                        </a>
+                        <ImportUsersButton />
                         <Link href="/master/user/new" className="btn btn-sm btn-primary">
                           <i className="bi bi-person-plus-fill me-1" aria-hidden="true"></i>
                           New user
@@ -188,7 +203,7 @@ export default async function UsersPage({ searchParams }: PageProps<"/master/use
                               )}
                             </td>
                             <td>
-                              <span className={`badge ${ROLE_BADGE[user.role]}`}>{user.role}</span>
+                              <span className={`badge ${ROLE_BADGE[user.role]}`}>{ROLE_LABEL[user.role]}</span>
                             </td>
                             <td>
                               <span
@@ -218,7 +233,7 @@ export default async function UsersPage({ searchParams }: PageProps<"/master/use
                                 </Link>
                                 <DeleteButton
                                   action={deleteUser.bind(null, user.id)}
-                                  confirmMessage={`Delete user "${user.name}"? This cannot be undone.`}
+                                  confirmMessage={`Delete user "${user.name}"? This sets their status to Inactive — they won't be able to sign in, but their history is kept. You can reactivate them later via Edit.`}
                                   label={`Delete ${user.name}`}
                                 />
                               </div>
@@ -236,14 +251,18 @@ export default async function UsersPage({ searchParams }: PageProps<"/master/use
                     </table>
                   </div>
                 </div>
-                <div className="card-footer clearfix">
-                  <div className="float-start pt-1 fs-7 text-body-secondary">
-                    Showing {users.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1} to{" "}
-                    {(currentPage - 1) * PAGE_SIZE + users.length} of {total} users
+                <div className="card-footer d-flex flex-wrap justify-content-between align-items-center gap-2">
+                  <div className="d-flex flex-wrap align-items-center gap-3">
+                    <div className="fs-7 text-body-secondary">
+                      Showing {users.length === 0 ? 0 : (currentPage - 1) * pageSize + 1} to{" "}
+                      {(currentPage - 1) * pageSize + users.length} of {total} users
+                    </div>
+                    <PageSizeSelect pageSize={pageSize} />
                   </div>
                   <Pagination
                     currentPage={currentPage}
                     totalPages={totalPages}
+                    className="pagination pagination-sm m-0"
                     makeHref={(p) => ({
                       pathname: "/master/user",
                       query: { ...linkQuery, sort: sortBy, dir: sortDir, page: p },

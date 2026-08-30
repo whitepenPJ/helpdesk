@@ -8,7 +8,11 @@ export default defineConfig({
   migrations: {
     path: "prisma/migrations",
   },
+  // Migrations/introspection need a direct (non-pooled) connection — DDL
+  // over PgBouncer's transaction-mode pooler (what DATABASE_URL now points
+  // at, for the app's own runtime queries) is unreliable. DIRECT_URL is the
+  // same Supabase database's session-mode connection (port 5432).
   datasource: {
-    url: process.env["DATABASE_URL"],
+    url: process.env["DIRECT_URL"],
   },
 });

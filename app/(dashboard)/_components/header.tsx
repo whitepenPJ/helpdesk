@@ -3,6 +3,7 @@ import Link from "next/link";
 import { auth } from "@/auth";
 import { logout } from "@/app/actions/auth";
 import { getRecentTicketActivity, type TicketActivityItem } from "@/app/lib/notifications";
+import { ROLE_LABEL } from "@/app/lib/roles";
 import { NotificationBell } from "./notification-bell";
 import { NotificationSubscribe } from "./notification-subscribe";
 import { NotificationPoller } from "./notification-poller";
@@ -177,7 +178,7 @@ export async function Header() {
                 <i className="bi bi-person-circle" style={{ fontSize: "5.5rem" }} aria-hidden="true"></i>
                 <p>
                   {displayName}
-                  <small>{user?.role ? `Role: ${user.role}` : user?.email}</small>
+                  <small>{user?.role ? `Role: ${ROLE_LABEL[user.role]}` : user?.email}</small>
                 </p>
               </li>
               <li className="user-footer">

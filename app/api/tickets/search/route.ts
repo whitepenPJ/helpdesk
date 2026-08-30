@@ -20,6 +20,7 @@ export async function GET(request: Request) {
   const isAdmin = session.user.role === "ADMIN";
   const tickets = await prisma.ticket.findMany({
     where: {
+      deletedAt: null,
       ...(isAdmin ? {} : { createdById: session.user.id }),
       OR: [
         { title: { contains: q, mode: "insensitive" } },

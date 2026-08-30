@@ -1,12 +1,9 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState } from "react";
 import { updateProfile, type ProfileFormState, type ProfileFormValues } from "@/app/actions/profile";
-import { Select2Select } from "../_components/select2-select";
 import { FormVendorScripts } from "../_components/form-vendor-scripts";
 import { ChangePasswordButton } from "./change-password-modal";
-
-type Option = { value: string; label: string };
 
 function FieldError({ messages }: { messages?: string[] }) {
   if (!messages?.length) return null;
@@ -17,28 +14,21 @@ export function ProfileForm({
   email,
   role,
   hasPassword,
-  companies,
-  departments,
+  companyName,
+  departmentName,
   initialValues,
 }: {
   email: string;
   role: string;
   hasPassword: boolean;
-  companies: Option[];
-  departments: (Option & { companyId: string })[];
+  /** Admin-managed only (Master User) — read-only here, not form fields. */
+  companyName: string | null;
+  departmentName: string | null;
   initialValues: ProfileFormValues;
 }) {
   const [state, formAction, pending] = useActionState<ProfileFormState, FormData>(updateProfile, undefined);
 
   const values = state?.values ?? initialValues;
-
-  // Department belongs to a company, so it can't be chosen until a company
-  // is — same cascading pattern as the ticket and admin User forms.
-  const [companyId, setCompanyId] = useState(values.companyId);
-  const departmentOptions = departments
-    .filter((d) => d.companyId === companyId)
-    .map((d) => ({ value: d.value, label: d.label }));
-  const departmentValue = companyId === values.companyId ? values.departmentId : undefined;
 
   const formKey = state ? JSON.stringify(state) : "initial";
 
@@ -90,34 +80,19 @@ export function ProfileForm({
                 className="form-control"
                 defaultValue={values.telephone}
               />
+              <div className="form-text">Used as the default phone number when you open a new ticket.</div>
               <FieldError messages={state?.errors?.telephone} />
             </div>
 
             <div className="col-md-6">
-              <label htmlFor="companyId" className="form-label">
-                Company
-              </label>
-              <Select2Select
-                name="companyId"
-                defaultValue={companyId}
-                placeholder="No company"
-                options={companies}
-                onChange={(value) => setCompanyId(value as string)}
-              />
+              <label className="form-label">Company</label>
+              <input type="text" className="form-control" value={companyName ?? "—"} disabled readOnly />
+              <div className="form-text">Set by an admin — see Master User to change it.</div>
             </div>
             <div className="col-md-6">
-              <label htmlFor="departmentId" className="form-label">
-                Department
-              </label>
-              <Select2Select
-                key={companyId || "no-company"}
-                name="departmentId"
-                defaultValue={departmentValue}
-                placeholder={companyId ? "No department" : "Select a company first"}
-                options={departmentOptions}
-                disabled={!companyId}
-              />
-              <FieldError messages={state?.errors?.departmentId} />
+              <label className="form-label">Department</label>
+              <input type="text" className="form-control" value={departmentName ?? "—"} disabled readOnly />
+              <div className="form-text">Set by an admin — see Master User to change it.</div>
             </div>
           </div>
         </div>

@@ -57,6 +57,7 @@ export function buildSidebarNav({ role, ticketCount, assignedCount, approvalCoun
         { icon: "bi-receipt", label: "Ticket Report", href: "/transaction/report/ticket" },
       ],
     });
+    items.push({ icon: "bi-journal-text", label: "Logs", href: "/logs" });
   } else {
     if (role === "SUPERVISOR") {
       items.push({

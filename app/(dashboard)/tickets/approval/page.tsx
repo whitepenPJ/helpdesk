@@ -4,15 +4,15 @@ import { prisma } from "@/app/lib/db";
 import { requireUser } from "@/app/lib/dal";
 import { SortableTh } from "../../_components/sortable-th";
 import { Pagination } from "../../_components/pagination";
+import { PageSizeSelect } from "../../_components/page-size-select";
 import { parseSort, type SortDir } from "@/app/lib/table-sort";
 import type { Prisma } from "@/app/generated/prisma/client";
 import { PRIORITY_BADGE } from "../ticket-badges";
 import { formatDateTime } from "@/app/lib/date-format";
 import { ApprovalRowActions } from "./_components/approval-row-actions";
+import { parsePageSize } from "@/app/lib/page-size";
 
 export const metadata: Metadata = { title: "Approval Ticket" };
-
-const PAGE_SIZE = 10;
 
 const SORT_COLUMNS = ["ticketNumber", "title", "category", "company", "priority", "requestedBy", "requestedAt"] as const;
 type SortColumn = (typeof SORT_COLUMNS)[number];
@@ -41,7 +41,8 @@ function buildOrderBy(sortBy: SortColumn, sortDir: SortDir): Prisma.TicketApprov
 export default async function ApprovalTicketsPage({ searchParams }: PageProps<"/tickets/approval">) {
   const session = await requireUser();
 
-  const { page, sort, dir } = await searchParams;
+  const { page, pageSize: pageSizeParam, sort, dir } = await searchParams;
+  const pageSize = parsePageSize(typeof pageSizeParam === "string" ? pageSizeParam : undefined);
   const currentPage = Math.max(1, Number(page) || 1);
   const { sortBy, sortDir } = parseSort(
     typeof sort === "string" ? sort : undefined,
@@ -50,7 +51,10 @@ export default async function ApprovalTicketsPage({ searchParams }: PageProps<"/
     { column: "requestedAt", dir: "asc" }
   );
 
-  const where: Prisma.TicketApprovalWhereInput = { supervisorId: session.user.id, status: "PENDING" };
+  const where: Prisma.TicketApprovalWhereInput = {
+    status: "PENDING",
+    Ticket: { deletedAt: null, Department: { DepartmentApprover: { some: { userId: session.user.id } } } },
+  };
 
   const [approvals, total] = await Promise.all([
     prisma.ticketApproval.findMany({
@@ -66,13 +70,13 @@ export default async function ApprovalTicketsPage({ searchParams }: PageProps<"/
         },
       },
       orderBy: buildOrderBy(sortBy, sortDir),
-      skip: (currentPage - 1) * PAGE_SIZE,
-      take: PAGE_SIZE,
+      skip: (currentPage - 1) * pageSize,
+      take: pageSize,
     }),
     prisma.ticketApproval.count({ where }),
   ]);
 
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   return (
     <>
@@ -108,13 +112,13 @@ export default async function ApprovalTicketsPage({ searchParams }: PageProps<"/
                     <table className="table table-hover align-middle m-0">
                       <thead>
                         <tr>
-                          <SortableTh label="Ticket #" column="ticketNumber" pathname="/tickets/approval" query={{}} sortBy={sortBy} sortDir={sortDir} />
-                          <SortableTh label="Title" column="title" pathname="/tickets/approval" query={{}} sortBy={sortBy} sortDir={sortDir} />
-                          <SortableTh label="Category" column="category" pathname="/tickets/approval" query={{}} sortBy={sortBy} sortDir={sortDir} />
-                          <SortableTh label="Company / Department" column="company" pathname="/tickets/approval" query={{}} sortBy={sortBy} sortDir={sortDir} />
-                          <SortableTh label="Priority" column="priority" pathname="/tickets/approval" query={{}} sortBy={sortBy} sortDir={sortDir} />
-                          <SortableTh label="Requested by" column="requestedBy" pathname="/tickets/approval" query={{}} sortBy={sortBy} sortDir={sortDir} />
-                          <SortableTh label="Requested" column="requestedAt" pathname="/tickets/approval" query={{}} sortBy={sortBy} sortDir={sortDir} />
+                          <SortableTh label="Ticket #" column="ticketNumber" pathname="/tickets/approval" query={{ pageSize: String(pageSize) }} sortBy={sortBy} sortDir={sortDir} />
+                          <SortableTh label="Title" column="title" pathname="/tickets/approval" query={{ pageSize: String(pageSize) }} sortBy={sortBy} sortDir={sortDir} />
+                          <SortableTh label="Category" column="category" pathname="/tickets/approval" query={{ pageSize: String(pageSize) }} sortBy={sortBy} sortDir={sortDir} />
+                          <SortableTh label="Company / Department" column="company" pathname="/tickets/approval" query={{ pageSize: String(pageSize) }} sortBy={sortBy} sortDir={sortDir} />
+                          <SortableTh label="Priority" column="priority" pathname="/tickets/approval" query={{ pageSize: String(pageSize) }} sortBy={sortBy} sortDir={sortDir} />
+                          <SortableTh label="Requested by" column="requestedBy" pathname="/tickets/approval" query={{ pageSize: String(pageSize) }} sortBy={sortBy} sortDir={sortDir} />
+                          <SortableTh label="Requested" column="requestedAt" pathname="/tickets/approval" query={{ pageSize: String(pageSize) }} sortBy={sortBy} sortDir={sortDir} />
                           <th className="text-end">Actions</th>
                         </tr>
                       </thead>
@@ -167,15 +171,22 @@ export default async function ApprovalTicketsPage({ searchParams }: PageProps<"/
                     </table>
                   </div>
                 </div>
-                <div className="card-footer clearfix">
-                  <div className="float-start pt-1 fs-7 text-body-secondary">
-                    Showing {approvals.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1} to{" "}
-                    {(currentPage - 1) * PAGE_SIZE + approvals.length} of {total} tickets
+                <div className="card-footer d-flex flex-wrap justify-content-between align-items-center gap-2">
+                  <div className="d-flex flex-wrap align-items-center gap-3">
+                    <div className="fs-7 text-body-secondary">
+                      Showing {approvals.length === 0 ? 0 : (currentPage - 1) * pageSize + 1} to{" "}
+                      {(currentPage - 1) * pageSize + approvals.length} of {total} tickets
+                    </div>
+                    <PageSizeSelect pageSize={pageSize} />
                   </div>
                   <Pagination
                     currentPage={currentPage}
                     totalPages={totalPages}
-                    makeHref={(p) => ({ pathname: "/tickets/approval", query: { sort: sortBy, dir: sortDir, page: p } })}
+                    className="pagination pagination-sm m-0"
+                    makeHref={(p) => ({
+                      pathname: "/tickets/approval",
+                      query: { sort: sortBy, dir: sortDir, page: p, pageSize: String(pageSize) },
+                    })}
                   />
                 </div>
               </div>

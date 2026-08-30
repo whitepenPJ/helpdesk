@@ -1,6 +1,7 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
 import { headers } from "next/headers";
+import { after } from "next/server";
 import { prisma } from "@/app/lib/db";
 import { sendEmail } from "@/app/lib/email";
 import { renderNewTicketEmail, renderTicketNotificationEmail, type TicketPriority } from "@/app/lib/email-templates";
@@ -20,13 +21,15 @@ async function resolveBaseUrl(): Promise<string> {
 type EmailPayload = { subject: string; html: string; text: string };
 
 // Low-level primitive behind every event below: writes the bell/
-// notifications-page row (see the read side further down) and fires a real
-// browser push + optional email in parallel — each failure logged rather
-// than thrown, so one bad recipient/channel never blocks the rest of a
-// fan-out. `message`/`href` are frozen into the Notification row at write
-// time (not re-derived when read), which is exactly why this table exists
-// instead of reusing TicketHistory — see the model's doc comment in
-// prisma/schema.prisma.
+// notifications-page row (see the read side further down) synchronously —
+// so it's reflected the instant the mutation's response comes back — then
+// defers the real browser push + optional email via `after()` so their
+// network I/O (Mailgun's HTTP API in particular) never adds to the Server
+// Action's own response time. Each failure is logged rather than thrown, so
+// one bad recipient/channel never blocks the rest of a fan-out. `message`/
+// `href` are frozen into the Notification row at write time (not re-derived
+// when read), which is exactly why this table exists instead of reusing
+// TicketHistory — see the model's doc comment in prisma/schema.prisma.
 async function notify({
   userId,
   ticketId,
@@ -41,16 +44,18 @@ async function notify({
   email?: { to: string; payload: EmailPayload };
 }): Promise<void> {
   await prisma.notification.create({ data: { id: randomUUID(), userId, ticketId, message, href } });
-  await Promise.all([
-    email
-      ? sendEmail({ to: email.to, ...email.payload }).catch((error) =>
-          console.error(`notify: email to ${email.to} failed`, error)
-        )
-      : Promise.resolve(),
-    sendPushToUser(userId, { title: "Helpdesk", body: message, url: href }).catch((error) =>
-      console.error(`notify: push to user ${userId} failed`, error)
-    ),
-  ]);
+  after(() =>
+    Promise.all([
+      email
+        ? sendEmail({ to: email.to, ...email.payload }).catch((error) =>
+            console.error(`notify: email to ${email.to} failed`, error)
+          )
+        : Promise.resolve(),
+      sendPushToUser(userId, { title: "Helpdesk", body: message, url: href }).catch((error) =>
+        console.error(`notify: push to user ${userId} failed`, error)
+      ),
+    ])
+  );
 }
 
 // Resolves a set of assignee/group ids (as known at the moment of
@@ -177,16 +182,20 @@ export async function notifyTicketAssigned(ticketId: string, target: AssignmentT
     baseUrl,
   });
 
-  await Promise.all([
-    ...recipients.map((user) =>
+  await Promise.all(
+    recipients.map((user) =>
       notify({ userId: user.id, ticketId, message, href, email: { to: user.email, payload: emailPayload } })
-    ),
-    // One channel post for the whole assignment (not per-recipient — a
-    // Teams webhook targets a shared channel, unlike email/push).
+    )
+  );
+  // One channel post for the whole assignment (not per-recipient — a Teams
+  // webhook targets a shared channel, unlike email/push). Deferred like the
+  // email/push above so this outbound HTTP call never adds to the caller's
+  // response time.
+  after(() =>
     sendTeamsNotification(`${emailPayload.subject}: ${message}`).catch((error) =>
       console.error("notifyTicketAssigned: Teams notification failed", error)
-    ),
-  ]);
+    )
+  );
 }
 
 // Bell + push only (no email) to the ticket's owner when an admin manually
@@ -258,8 +267,12 @@ export async function notifyTicketCreated(ticketId: string): Promise<void> {
 
 // --- 3. Approval requested (EM03) ------------------------------------------
 
-export async function notifyApprovalRequested(ticketId: string, supervisorId: string): Promise<void> {
-  const [ticket, supervisor] = await Promise.all([
+// A department can have several approvers now — the request goes out to all
+// of them; whoever decides first is the one recorded on the TicketApproval.
+export async function notifyApprovalRequested(ticketId: string, approverIds: string[]): Promise<void> {
+  if (approverIds.length === 0) return;
+
+  const [ticket, approvers] = await Promise.all([
     prisma.ticket.findUnique({
       where: { id: ticketId },
       select: {
@@ -270,9 +283,9 @@ export async function notifyApprovalRequested(ticketId: string, supervisorId: st
         Department: { select: { name: true } },
       },
     }),
-    prisma.user.findUnique({ where: { id: supervisorId }, select: { id: true, email: true } }),
+    prisma.user.findMany({ where: { id: { in: approverIds } }, select: { id: true, email: true } }),
   ]);
-  if (!ticket || !supervisor) return;
+  if (!ticket || approvers.length === 0) return;
 
   const baseUrl = await resolveBaseUrl();
   const href = `${baseUrl}/tickets/approval`;
@@ -293,7 +306,11 @@ export async function notifyApprovalRequested(ticketId: string, supervisorId: st
     baseUrl,
   });
 
-  await notify({ userId: supervisor.id, ticketId, message, href, email: { to: supervisor.email, payload: emailPayload } });
+  await Promise.all(
+    approvers.map((approver) =>
+      notify({ userId: approver.id, ticketId, message, href, email: { to: approver.email, payload: emailPayload } })
+    )
+  );
 }
 
 // --- 4/5. Approval decided (EM04, EM05) -------------------------------------
@@ -334,8 +351,8 @@ async function notifyApprovalDecision(
     departmentName: ticket.Department.name,
   };
   const decisionLine = isRejected
-    ? `Rejected by ${supervisorName} (Supervisor)${reason ? `: ${reason}` : ""}.`
-    : `Approved by ${supervisorName} (Supervisor).`;
+    ? `Rejected by ${supervisorName} (Approver)${reason ? `: ${reason}` : ""}.`
+    : `Approved by ${supervisorName} (Approver).`;
 
   const managementHref = `${baseUrl}/transaction/ticket-management/${ticketId}`;
   const assignedHref = `${baseUrl}/tickets/assigned/${ticketId}`;

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Script from "next/script";
 import type { AssigneeReportRow } from "@/app/lib/assignee-report-data";
+import { getChartTheme } from "../../../_components/chart-theme";
 
 declare global {
   interface Window {
@@ -23,13 +24,16 @@ function renderChart(rows: AssigneeReportRow[]) {
     return;
   }
 
+  const { mode, foreColor, gridColor } = getChartTheme();
   new ApexCharts(el, {
     series: [
       { name: "Active", data: top.map((r) => r.active) },
       { name: "Processing", data: top.map((r) => r.processing) },
       { name: "Done", data: top.map((r) => r.done) },
     ],
-    chart: { type: "bar", height: 360, stacked: true, toolbar: { show: false } },
+    chart: { type: "bar", height: 360, stacked: true, toolbar: { show: false }, background: "transparent", foreColor },
+    theme: { mode },
+    grid: { borderColor: gridColor },
     plotOptions: { bar: { horizontal: true, borderRadius: 3 } },
     colors: ["#0dcaf0", "#dc3545", "#198754"],
     dataLabels: { enabled: false },

@@ -3,24 +3,25 @@ import Link from "next/link";
 import { requireUser } from "@/app/lib/dal";
 import { searchTickets } from "@/app/lib/ticket-search";
 import { Pagination } from "../_components/pagination";
+import { PageSizeSelect } from "../_components/page-size-select";
 import { STATUS_BADGE, PRIORITY_BADGE, PROGRAM_BADGE } from "../tickets/ticket-badges";
 import { formatDateTime } from "@/app/lib/date-format";
+import { parsePageSize } from "@/app/lib/page-size";
 
 export const metadata: Metadata = { title: "Search" };
-
-const PAGE_SIZE = 10;
 
 export default async function SearchPage({ searchParams }: PageProps<"/search">) {
   const session = await requireUser();
 
-  const { q, page } = await searchParams;
+  const { q, page, pageSize: pageSizeParam } = await searchParams;
   const query = typeof q === "string" ? q : "";
+  const pageSize = parsePageSize(typeof pageSizeParam === "string" ? pageSizeParam : undefined);
   const currentPage = Math.max(1, Number(page) || 1);
 
   const allResults = await searchTickets(session.user.id, session.user.role, query);
   const total = allResults.length;
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const results = allResults.slice((currentPage - 1) * PAGE_SIZE, (currentPage - 1) * PAGE_SIZE + PAGE_SIZE);
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const results = allResults.slice((currentPage - 1) * pageSize, (currentPage - 1) * pageSize + pageSize);
 
   const backHref = `/search?${new URLSearchParams({ q: query, ...(currentPage > 1 ? { page: String(currentPage) } : {}) }).toString()}`;
 
@@ -128,15 +129,19 @@ export default async function SearchPage({ searchParams }: PageProps<"/search">)
                     </table>
                   </div>
                 </div>
-                <div className="card-footer clearfix">
-                  <div className="float-start pt-1 fs-7 text-body-secondary">
-                    Showing {results.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1} to{" "}
-                    {(currentPage - 1) * PAGE_SIZE + results.length} of {total} results
+                <div className="card-footer d-flex flex-wrap justify-content-between align-items-center gap-2">
+                  <div className="d-flex flex-wrap align-items-center gap-3">
+                    <div className="fs-7 text-body-secondary">
+                      Showing {results.length === 0 ? 0 : (currentPage - 1) * pageSize + 1} to{" "}
+                      {(currentPage - 1) * pageSize + results.length} of {total} results
+                    </div>
+                    <PageSizeSelect pageSize={pageSize} />
                   </div>
                   <Pagination
                     currentPage={currentPage}
                     totalPages={totalPages}
-                    makeHref={(p) => ({ pathname: "/search", query: { q: query, page: p } })}
+                    className="pagination pagination-sm m-0"
+                    makeHref={(p) => ({ pathname: "/search", query: { q: query, page: p, pageSize: String(pageSize) } })}
                   />
                 </div>
               </div>

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Select2Select } from "../../_components/select2-select";
 import { FormVendorScripts } from "../../_components/form-vendor-scripts";
 import { STATUSES } from "../../tickets/ticket-badges";
+import { ReportDateField } from "./_components/report-date-field";
 
 type Option = { value: string; label: string };
 
@@ -69,16 +70,10 @@ export function ReportFilterForm({
             </div>
 
             <div className="col-md-3">
-              <label htmlFor="dateFrom" className="form-label">
-                Date From
-              </label>
-              <input type="date" id="dateFrom" name="dateFrom" className="form-control" defaultValue={current.dateFrom} />
+              <ReportDateField id="dateFrom" name="dateFrom" label="Date From" defaultValue={current.dateFrom} />
             </div>
             <div className="col-md-3">
-              <label htmlFor="dateTo" className="form-label">
-                Date To
-              </label>
-              <input type="date" id="dateTo" name="dateTo" className="form-control" defaultValue={current.dateTo} />
+              <ReportDateField id="dateTo" name="dateTo" label="Date To" defaultValue={current.dateTo} />
             </div>
             <div className="col-md-3">
               <label className="form-label">Company</label>

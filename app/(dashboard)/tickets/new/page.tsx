@@ -11,45 +11,101 @@ export default async function NewTicketPage() {
 
   const isAdmin = session.user.role === "ADMIN";
 
-  const [categories, companies, departments, profile, users] = await Promise.all([
+  const [categories, profile] = await Promise.all([
     prisma.category.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
-    prisma.company.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
-    prisma.department.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, companyId: true } }),
-    prisma.user.findUnique({ where: { id: session.user.id }, select: { companyId: true, departmentId: true } }),
-    // Only an admin can actually change the Creator dropdown — everyone
-    // else's copy is locked to just their own name (still needs an option
-    // for it, or the disabled Select2 would render blank).
-    isAdmin
-      ? prisma.user.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, email: true } })
-      : prisma.user.findMany({ where: { id: session.user.id }, select: { id: true, name: true, email: true } }),
+    prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { status: true, canOpenTicketForOthers: true },
+    }),
   ]);
 
-  return (
-    <>
-      <div className="app-content-header">
-        <div className="container-fluid">
-          <div className="row">
-            <div className="col-sm-6">
-              <h1 className="mb-0 fs-3">New Ticket</h1>
-            </div>
-            <div className="col-sm-6">
-              <nav aria-label="breadcrumb">
-                <ol className="breadcrumb float-sm-end">
-                  <li className="breadcrumb-item">
-                    <Link href="/dashboard">Home</Link>
-                  </li>
-                  <li className="breadcrumb-item">
-                    <Link href="/tickets">Tickets</Link>
-                  </li>
-                  <li className="breadcrumb-item active" aria-current="page">
-                    New
-                  </li>
-                </ol>
-              </nav>
-            </div>
+  const breadcrumb = (
+    <div className="app-content-header">
+      <div className="container-fluid">
+        <div className="row">
+          <div className="col-sm-6">
+            <h1 className="mb-0 fs-3">New Ticket</h1>
+          </div>
+          <div className="col-sm-6">
+            <nav aria-label="breadcrumb">
+              <ol className="breadcrumb float-sm-end">
+                <li className="breadcrumb-item">
+                  <Link href="/dashboard">Home</Link>
+                </li>
+                <li className="breadcrumb-item">
+                  <Link href="/tickets">Tickets</Link>
+                </li>
+                <li className="breadcrumb-item active" aria-current="page">
+                  New
+                </li>
+              </ol>
+            </nav>
           </div>
         </div>
       </div>
+    </div>
+  );
+
+  // A brand-new Microsoft Entra ID sign-in with no admin-configured profile
+  // yet (see auth.ts) — can browse but can't file a ticket until an admin
+  // sets their company/department and moves them off PENDING.
+  if (profile?.status === "PENDING") {
+    return (
+      <>
+        {breadcrumb}
+        <div className="app-content">
+          <div className="container-fluid">
+            <div className="alert alert-warning" role="alert">
+              Your account is waiting on an admin to set up your company and department. You&apos;ll be able to
+              open tickets once that&apos;s done.
+            </div>
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  // Admin, or a user whose Master User "Options" grants it, can pick anyone
+  // as the Creator — everyone else's copy is locked to just their own name
+  // (still needs an option for it, or the read-only field would render blank).
+  const canChangeCreator = isAdmin || Boolean(profile?.canOpenTicketForOthers);
+  const users = await (canChangeCreator
+    ? prisma.user.findMany({
+        orderBy: { name: "asc" },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          telephone: true,
+          Company: { select: { name: true } },
+          Department_User_departmentIdToDepartment: {
+            select: {
+              name: true,
+              DepartmentApprover: { select: { User: { select: { name: true, email: true } } } },
+            },
+          },
+        },
+      })
+    : prisma.user.findMany({
+        where: { id: session.user.id },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          telephone: true,
+          Company: { select: { name: true } },
+          Department_User_departmentIdToDepartment: {
+            select: {
+              name: true,
+              DepartmentApprover: { select: { User: { select: { name: true, email: true } } } },
+            },
+          },
+        },
+      }));
+
+  return (
+    <>
+      {breadcrumb}
 
       <div className="app-content">
         <div className="container-fluid">
@@ -57,13 +113,16 @@ export default async function NewTicketPage() {
             <div className="col-12">
               <TicketForm
                 categories={categories.map((c) => ({ value: c.id, label: c.name }))}
-                companies={companies.map((c) => ({ value: c.id, label: c.name }))}
-                departments={departments.map((d) => ({ value: d.id, label: d.name, companyId: d.companyId }))}
-                users={users.map((u) => ({ value: u.id, label: `${u.name} (${u.email})` }))}
-                defaultCompanyId={profile?.companyId ?? undefined}
-                defaultDepartmentId={profile?.departmentId ?? undefined}
+                users={users.map((u) => ({
+                  value: u.id,
+                  label: `${u.name} (${u.email})`,
+                  companyName: u.Company?.name ?? null,
+                  departmentName: u.Department_User_departmentIdToDepartment?.name ?? null,
+                  telephone: u.telephone,
+                  approvers: (u.Department_User_departmentIdToDepartment?.DepartmentApprover ?? []).map((a) => a.User),
+                }))}
                 defaultCreatorId={session.user.id}
-                canChangeCreator={isAdmin}
+                canChangeCreator={canChangeCreator}
               />
             </div>
           </div>

@@ -7,10 +7,10 @@ import { STATUS_BADGE, PRIORITY_BADGE } from "../../tickets/ticket-badges";
 import { formatDateTime } from "@/app/lib/date-format";
 import { ReportCharts } from "./report-charts";
 import { ReportFilterForm } from "./report-filter-form";
+import { PageSizeSelect } from "../../_components/page-size-select";
+import { parsePageSize } from "@/app/lib/page-size";
 
 export const metadata: Metadata = { title: "Main Report" };
-
-const PAGE_SIZE = 20;
 
 export default async function ReportPage({ searchParams }: PageProps<"/transaction/report">) {
   await requireAdmin();
@@ -18,6 +18,7 @@ export default async function ReportPage({ searchParams }: PageProps<"/transacti
   const rawSearchParams = await searchParams;
   const params = toURLSearchParams(rawSearchParams);
   const filters = parseReportFilters(params);
+  const pageSize = parsePageSize(params.get("pageSize") ?? undefined);
 
   const [options, data] = await Promise.all([getReportFilterOptions(), getReportData(filters)]);
 
@@ -33,12 +34,12 @@ export default async function ReportPage({ searchParams }: PageProps<"/transacti
   };
 
   const totalRows = filters.groupByCategory ? data.byCategory.length : data.tickets.length;
-  const totalPages = Math.max(1, Math.ceil(totalRows / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
   const currentPage = Math.min(Math.max(1, Number(params.get("page")) || 1), totalPages);
-  const pageStart = (currentPage - 1) * PAGE_SIZE;
+  const pageStart = (currentPage - 1) * pageSize;
 
-  const pagedCategories = filters.groupByCategory ? data.byCategory.slice(pageStart, pageStart + PAGE_SIZE) : [];
-  const flatTickets = filters.groupByCategory ? [] : data.tickets.slice(pageStart, pageStart + PAGE_SIZE);
+  const pagedCategories = filters.groupByCategory ? data.byCategory.slice(pageStart, pageStart + pageSize) : [];
+  const flatTickets = filters.groupByCategory ? [] : data.tickets.slice(pageStart, pageStart + pageSize);
 
   function pageHref(page: number): string {
     const p = new URLSearchParams(params);
@@ -289,10 +290,13 @@ export default async function ReportPage({ searchParams }: PageProps<"/transacti
                 </div>
                 {totalRows > 0 && (
                   <div className="card-footer d-flex flex-wrap align-items-center justify-content-between gap-2">
-                    <span className="fs-7 text-secondary">
-                      Showing {pageStart + 1}–{Math.min(pageStart + PAGE_SIZE, totalRows)} of {totalRows}{" "}
-                      {filters.groupByCategory ? "categories" : "tickets"}
-                    </span>
+                    <div className="d-flex flex-wrap align-items-center gap-3">
+                      <span className="fs-7 text-secondary">
+                        Showing {pageStart + 1}–{Math.min(pageStart + pageSize, totalRows)} of {totalRows}{" "}
+                        {filters.groupByCategory ? "categories" : "tickets"}
+                      </span>
+                      <PageSizeSelect pageSize={pageSize} />
+                    </div>
                     {totalPages > 1 && (
                       <nav aria-label="Report table pagination">
                         <ul className="pagination pagination-sm m-0">

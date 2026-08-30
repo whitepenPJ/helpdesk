@@ -20,27 +20,20 @@ export default async function EditCompanyPage({
   const { id } = await params;
   const { error } = await searchParams;
   const errorMessage = typeof error === "string" ? ERROR_MESSAGES[error] : undefined;
-  const [company, departments, freeSupervisors, allSupervisors] = await Promise.all([
+  const [company, departments, supervisors] = await Promise.all([
     prisma.company.findUnique({ where: { id } }),
     prisma.department.findMany({
       where: { companyId: id },
       orderBy: { name: "asc" },
-      include: { User_Department_supervisorIdToUser: { select: { name: true } } },
+      include: { DepartmentApprover: { select: { userId: true, User: { select: { name: true } } } } },
     }),
-    prisma.user.findMany({
-      where: { role: "SUPERVISOR", Department_Department_supervisorIdToUser: null },
-      orderBy: { name: "asc" },
-      select: { id: true, name: true },
-    }),
-    // Broader than freeSupervisors — includes every supervisor regardless of
-    // current assignment, plus which department (if any) they currently
-    // supervise, so each row's "edit supervisor" picker can offer its own
-    // current supervisor too (who's excluded from freeSupervisors precisely
-    // because they're not "free").
+    // A supervisor can now approve for more than one department, so every
+    // department's picker offers the same full list — no more "free vs.
+    // already assigned" split.
     prisma.user.findMany({
       where: { role: "SUPERVISOR" },
       orderBy: { name: "asc" },
-      select: { id: true, name: true, Department_Department_supervisorIdToUser: { select: { id: true } } },
+      select: { id: true, name: true },
     }),
   ]);
 
@@ -89,22 +82,17 @@ export default async function EditCompanyPage({
                 companyId={company.id}
                 initialValues={{
                   name: company.name,
+                  code: company.code,
                   isActive: company.isActive,
                 }}
                 departments={departments.map((d) => ({
                   id: d.id,
                   name: d.name,
-                  supervisorId: d.supervisorId,
-                  supervisorName: d.User_Department_supervisorIdToUser?.name ?? null,
-                  availableSupervisors: allSupervisors
-                    .filter(
-                      (s) =>
-                        !s.Department_Department_supervisorIdToUser ||
-                        s.Department_Department_supervisorIdToUser.id === d.id
-                    )
-                    .map((s) => ({ value: s.id, label: s.name })),
+                  code: d.code,
+                  approverIds: d.DepartmentApprover.map((a) => a.userId),
+                  approverNames: d.DepartmentApprover.map((a) => a.User.name),
                 }))}
-                supervisors={freeSupervisors.map((s) => ({ value: s.id, label: s.name }))}
+                supervisors={supervisors.map((s) => ({ value: s.id, label: s.name }))}
               />
             </div>
           </div>

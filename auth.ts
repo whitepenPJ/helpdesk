@@ -3,7 +3,10 @@ import Credentials from "next-auth/providers/credentials";
 import MicrosoftEntraID from "next-auth/providers/microsoft-entra-id";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import bcrypt from "bcryptjs";
+import { headers } from "next/headers";
+import { after } from "next/server";
 import { prisma } from "@/app/lib/db";
+import { sendEmail } from "@/app/lib/email";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
@@ -71,6 +74,40 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       session.user.id = token.id;
       session.user.role = token.role;
       return session;
+    },
+  },
+  events: {
+    // PrismaAdapter creates this row itself (before `newUser`/session
+    // callbacks ever see it) for a first-time Microsoft Entra ID sign-in
+    // with no matching email — it never sets company/department, so leave
+    // it PENDING until an admin fills those in via Master User.
+    async createUser({ user }) {
+      if (!user.id) return;
+      await prisma.user.update({ where: { id: user.id }, data: { status: "PENDING" } });
+
+      const admins = await prisma.user.findMany({
+        where: { role: "ADMIN", status: "ACTIVE" },
+        select: { email: true },
+      });
+      if (admins.length === 0) return;
+
+      let usersUrl = "the Master User page";
+      try {
+        const host = (await headers()).get("host");
+        if (host) {
+          const protocol = host.startsWith("localhost") ? "http" : "https";
+          usersUrl = `${protocol}://${host}/master/user`;
+        }
+      } catch {
+        // Not in a request context — fall back to the plain-text description above.
+      }
+
+      const who = user.name ? `${user.name} (${user.email})` : user.email;
+      const subject = `[Helpdesk] New Microsoft sign-in awaiting setup — ${user.email}`;
+      const text = `${who} just signed in with Microsoft for the first time. Their account was created with status "Pending" — they can log in but can't open tickets until you assign a company and department for them.\n\nSet this up at: ${usersUrl}`;
+
+      // Deferred so the sign-in redirect doesn't wait on Mailgun's HTTP API.
+      after(() => Promise.allSettled(admins.map((admin) => sendEmail({ to: admin.email, subject, text }))));
     },
   },
 });

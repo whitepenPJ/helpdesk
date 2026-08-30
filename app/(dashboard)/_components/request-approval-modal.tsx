@@ -19,7 +19,7 @@ declare global {
   }
 }
 
-type Supervisor = { name: string; email: string } | null;
+type Approver = { name: string; email: string };
 
 // Shared between Ticket Management's row actions (⋮ dropdown) and the
 // ticket detail page — both admin surfaces get the same Request Approve
@@ -27,14 +27,14 @@ type Supervisor = { name: string; email: string } | null;
 export function RequestApprovalButton({
   ticketId,
   companyId,
-  supervisor,
+  approvers,
   disabled,
   variant = "button",
   redirectOnSuccessTo,
 }: {
   ticketId: string;
   companyId: string;
-  supervisor: Supervisor;
+  approvers: Approver[];
   disabled?: boolean;
   variant?: "button" | "dropdown-item";
   /** When set, success shows an OK-button confirmation instead of just
@@ -66,7 +66,7 @@ export function RequestApprovalButton({
         <RequestApprovalModal
           ticketId={ticketId}
           companyId={companyId}
-          supervisor={supervisor}
+          approvers={approvers}
           onClose={() => setOpen(false)}
           redirectOnSuccessTo={redirectOnSuccessTo}
         />
@@ -78,13 +78,13 @@ export function RequestApprovalButton({
 function RequestApprovalModal({
   ticketId,
   companyId,
-  supervisor,
+  approvers,
   onClose,
   redirectOnSuccessTo,
 }: {
   ticketId: string;
   companyId: string;
-  supervisor: Supervisor;
+  approvers: Approver[];
   onClose: () => void;
   redirectOnSuccessTo?: string;
 }) {
@@ -125,26 +125,30 @@ function RequestApprovalModal({
           <div className="modal-content">
             <form action={formAction}>
               <div className="modal-header">
-                <h5 className="modal-title">Request supervisor approval</h5>
+                <h5 className="modal-title">Request approver approval</h5>
                 <button type="button" className="btn-close" aria-label="Close" onClick={onClose}></button>
               </div>
               <div className="modal-body text-start">
-                {supervisor ? (
+                {approvers.length > 0 ? (
                   <>
-                    <div className="form-label text-secondary mb-1">Supervisor</div>
-                    <div className="mb-3">
-                      {supervisor.name} <span className="text-secondary">({supervisor.email})</span>
-                    </div>
+                    <div className="form-label text-secondary mb-1">Approver{approvers.length > 1 ? "s" : ""}</div>
+                    <ul className="mb-3">
+                      {approvers.map((approver) => (
+                        <li key={approver.email}>
+                          {approver.name} <span className="text-secondary">({approver.email})</span>
+                        </li>
+                      ))}
+                    </ul>
                     <label htmlFor="approval-message" className="form-label">
-                      Message to supervisor
+                      Message to approver{approvers.length > 1 ? "s" : ""}
                     </label>
                     <textarea id="approval-message" name="message" className="form-control" rows={3} />
                   </>
                 ) : (
                   <>
-                    <p className="text-danger mb-1">This ticket&apos;s department has no supervisor assigned.</p>
+                    <p className="text-danger mb-1">This ticket&apos;s department has no approver assigned.</p>
                     <Link href={`/master/company/${companyId}/edit`} target="_blank" rel="noopener noreferrer">
-                      + Add supervisor
+                      + Add approver
                     </Link>
                   </>
                 )}
@@ -155,7 +159,7 @@ function RequestApprovalModal({
                   <i className="bi bi-x-lg me-1" aria-hidden="true"></i>
                   Cancel
                 </button>
-                <button type="submit" className="btn btn-primary" disabled={pending || !supervisor}>
+                <button type="submit" className="btn btn-primary" disabled={pending || approvers.length === 0}>
                   <i className="bi bi-send-check me-1" aria-hidden="true"></i>
                   {pending ? "Sending…" : "Send Request"}
                 </button>

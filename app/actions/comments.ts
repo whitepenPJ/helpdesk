@@ -47,8 +47,16 @@ export async function createComment(
     canComment = Boolean(me?.userGroupId) && ticket.TicketAssignedGroup.some((g) => g.userGroupId === me?.userGroupId);
   }
   if (!canComment) {
-    const approval = await prisma.ticketApproval.findUnique({ where: { ticketId }, select: { supervisorId: true } });
-    canComment = approval?.supervisorId === session.user.id;
+    const approval = await prisma.ticketApproval.findUnique({
+      where: { ticketId },
+      select: { Ticket: { select: { departmentId: true } } },
+    });
+    if (approval) {
+      const isDeptApprover = await prisma.departmentApprover.findUnique({
+        where: { departmentId_userId: { departmentId: approval.Ticket.departmentId, userId: session.user.id } },
+      });
+      canComment = Boolean(isDeptApprover);
+    }
   }
   if (!canComment) {
     return { errors: { message: ["You don't have permission to comment on this ticket."] } };

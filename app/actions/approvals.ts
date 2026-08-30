@@ -25,13 +25,22 @@ export async function decideTicketApproval(
   const approval = await prisma.ticketApproval.findUnique({
     where: { id: approvalId },
     include: {
-      Ticket: { select: { id: true, preApprovalStatus: true } },
-      User: { select: { name: true } },
+      Ticket: { select: { id: true, preApprovalStatus: true, departmentId: true } },
     },
   });
   if (!approval) return { error: "Approval request not found." };
-  if (approval.supervisorId !== session.user.id) return { error: "You are not the reviewing supervisor." };
   if (approval.status !== "PENDING") return { error: "This request has already been decided." };
+
+  const decider = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: {
+      name: true,
+      DepartmentApprover: { where: { departmentId: approval.Ticket.departmentId }, select: { id: true } },
+    },
+  });
+  if (!decider || decider.DepartmentApprover.length === 0) {
+    return { error: "You are not an approver for this ticket's department." };
+  }
 
   const reasonValue = formData.get("reason");
   const reason = typeof reasonValue === "string" && reasonValue.trim() ? reasonValue.trim() : null;
@@ -39,17 +48,23 @@ export async function decideTicketApproval(
     return { error: "Enter a reason for rejecting." };
   }
 
-  const supervisorName = approval.User.name;
+  const supervisorName = decider.name;
   const now = new Date();
   const newStatus = decision === "REJECTED" ? "CLOSED" : (approval.Ticket.preApprovalStatus ?? "ASSIGNED");
-  const label = decision === "REJECTED" ? `Closed by ${supervisorName} (Supervisor)` : `Approved by ${supervisorName} (Supervisor)`;
+  const label = decision === "REJECTED" ? `Closed by ${supervisorName} (Approver)` : `Approved by ${supervisorName} (Approver)`;
 
-  await prisma.$transaction([
-    prisma.ticketApproval.update({
-      where: { id: approvalId },
-      data: { status: decision, comments: reason, decidedAt: now, updatedAt: now },
-    }),
-    prisma.ticket.update({
+  // Guards against two approvers deciding at once — the update only
+  // succeeds if the request is still PENDING at the moment of the write; if
+  // another approver beat this one to it, `count` comes back 0 and the
+  // ticket/history writes are skipped rather than double-applying a decision.
+  const decided = await prisma.$transaction(async (tx) => {
+    const { count } = await tx.ticketApproval.updateMany({
+      where: { id: approvalId, status: "PENDING" },
+      data: { supervisorId: session.user.id, status: decision, comments: reason, decidedAt: now, updatedAt: now },
+    });
+    if (count === 0) return false;
+
+    await tx.ticket.update({
       where: { id: approval.ticketId },
       data: {
         status: newStatus,
@@ -57,8 +72,8 @@ export async function decideTicketApproval(
         updatedAt: now,
         ...(newStatus === "CLOSED" ? { closedAt: now } : {}),
       },
-    }),
-    prisma.ticketHistory.create({
+    });
+    await tx.ticketHistory.create({
       data: {
         id: randomUUID(),
         ticketId: approval.ticketId,
@@ -67,8 +82,13 @@ export async function decideTicketApproval(
         previousState: "WAITING",
         newState: newStatus,
       },
-    }),
-  ]);
+    });
+    return true;
+  });
+
+  if (!decided) {
+    return { error: "Another approver already decided this request." };
+  }
 
   revalidatePath("/tickets/approval");
   revalidatePath(`/tickets/approval/${approval.ticketId}`);

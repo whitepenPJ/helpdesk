@@ -6,14 +6,14 @@ import { deleteCompany } from "@/app/actions/companies";
 import { DeleteButton } from "../../_components/delete-button";
 import { SortableTh } from "../../_components/sortable-th";
 import { Pagination } from "../../_components/pagination";
+import { PageSizeSelect } from "../../_components/page-size-select";
 import { parseSort, type SortDir } from "@/app/lib/table-sort";
 import type { Prisma } from "@/app/generated/prisma/client";
+import { parsePageSize } from "@/app/lib/page-size";
 
 export const metadata: Metadata = { title: "Companies" };
 
-const PAGE_SIZE = 10;
-
-const SORT_COLUMNS = ["name", "address", "taxId", "isActive", "departments", "users", "createdAt"] as const;
+const SORT_COLUMNS = ["name", "code", "address", "taxId", "isActive", "departments", "users", "createdAt"] as const;
 type SortColumn = (typeof SORT_COLUMNS)[number];
 
 function buildOrderBy(sortBy: SortColumn, sortDir: SortDir): Prisma.CompanyOrderByWithRelationInput {
@@ -34,8 +34,9 @@ const ERROR_MESSAGES: Record<string, string> = {
 export default async function CompaniesPage({ searchParams }: PageProps<"/master/company">) {
   await requireAdmin();
 
-  const { q, page, error, sort, dir } = await searchParams;
+  const { q, page, pageSize: pageSizeParam, error, sort, dir } = await searchParams;
   const query = typeof q === "string" ? q : "";
+  const pageSize = parsePageSize(typeof pageSizeParam === "string" ? pageSizeParam : undefined);
   const currentPage = Math.max(1, Number(page) || 1);
   const { sortBy, sortDir } = parseSort(
     typeof sort === "string" ? sort : undefined,
@@ -51,15 +52,15 @@ export default async function CompaniesPage({ searchParams }: PageProps<"/master
       where,
       include: { _count: { select: { User: true, Department: true } } },
       orderBy: buildOrderBy(sortBy, sortDir),
-      skip: (currentPage - 1) * PAGE_SIZE,
-      take: PAGE_SIZE,
+      skip: (currentPage - 1) * pageSize,
+      take: pageSize,
     }),
     prisma.company.count({ where }),
   ]);
 
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const errorMessage = typeof error === "string" ? ERROR_MESSAGES[error] : undefined;
-  const linkQuery = query ? { q: query } : {};
+  const linkQuery = { ...(query ? { q: query } : {}), pageSize: String(pageSize) };
 
   return (
     <>
@@ -132,6 +133,7 @@ export default async function CompaniesPage({ searchParams }: PageProps<"/master
                       <thead>
                         <tr>
                           <SortableTh label="Company" column="name" pathname="/master/company" query={linkQuery} sortBy={sortBy} sortDir={sortDir} />
+                          <SortableTh label="Code" column="code" pathname="/master/company" query={linkQuery} sortBy={sortBy} sortDir={sortDir} />
                           <SortableTh label="Address" column="address" pathname="/master/company" query={linkQuery} sortBy={sortBy} sortDir={sortDir} />
                           <SortableTh label="Tax ID" column="taxId" pathname="/master/company" query={linkQuery} sortBy={sortBy} sortDir={sortDir} />
                           <SortableTh label="Status" column="isActive" pathname="/master/company" query={linkQuery} sortBy={sortBy} sortDir={sortDir} />
@@ -144,6 +146,7 @@ export default async function CompaniesPage({ searchParams }: PageProps<"/master
                         {companies.map((company) => (
                           <tr key={company.id}>
                             <td className="fw-medium">{company.name}</td>
+                            <td>{company.code ?? <span className="text-secondary">—</span>}</td>
                             <td>{company.address ?? <span className="text-secondary">—</span>}</td>
                             <td>{company.taxId ?? <span className="text-secondary">—</span>}</td>
                             <td>
@@ -182,7 +185,7 @@ export default async function CompaniesPage({ searchParams }: PageProps<"/master
                         ))}
                         {companies.length === 0 && (
                           <tr>
-                            <td colSpan={7} className="text-center text-secondary py-4">
+                            <td colSpan={8} className="text-center text-secondary py-4">
                               No companies found.
                             </td>
                           </tr>
@@ -191,14 +194,18 @@ export default async function CompaniesPage({ searchParams }: PageProps<"/master
                     </table>
                   </div>
                 </div>
-                <div className="card-footer clearfix">
-                  <div className="float-start pt-1 fs-7 text-body-secondary">
-                    Showing {companies.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1} to{" "}
-                    {(currentPage - 1) * PAGE_SIZE + companies.length} of {total} companies
+                <div className="card-footer d-flex flex-wrap justify-content-between align-items-center gap-2">
+                  <div className="d-flex flex-wrap align-items-center gap-3">
+                    <div className="fs-7 text-body-secondary">
+                      Showing {companies.length === 0 ? 0 : (currentPage - 1) * pageSize + 1} to{" "}
+                      {(currentPage - 1) * pageSize + companies.length} of {total} companies
+                    </div>
+                    <PageSizeSelect pageSize={pageSize} />
                   </div>
                   <Pagination
                     currentPage={currentPage}
                     totalPages={totalPages}
+                    className="pagination pagination-sm m-0"
                     makeHref={(p) => ({ pathname: "/master/company", query: { ...linkQuery, sort: sortBy, dir: sortDir, page: p } })}
                   />
                 </div>

@@ -16,6 +16,10 @@ model User {
   role                                     Role               @default(USER)
   status                                   UserStatus         @default(ACTIVE)
   isAssignee                               Boolean            @default(false)
+  // Master User's "Options" group — lets this user pick any user as the
+  // Creator on the New Ticket form (like an admin can), instead of it being
+  // locked to themselves. See canChangeCreator in app/(dashboard)/tickets/new/page.tsx.
+  canOpenTicketForOthers                   Boolean            @default(false)
   image                                    String?
   companyId                                String?
   departmentId                             String?
@@ -34,11 +38,12 @@ model User {
   ApiToken                                 ApiToken[]
   AuditLog                                 AuditLog[]
   CategoryAdmin                            CategoryAdmin[]
-  Department_Department_supervisorIdToUser Department?        @relation("Department_supervisorIdToUser")
+  DepartmentApprover                       DepartmentApprover[]
   LessonLearned                            LessonLearned[]
   Notification                             Notification[]
   PushSubscription                         PushSubscription[]
   Ticket_Ticket_createdByIdToUser          Ticket[]           @relation("Ticket_createdByIdToUser")
+  Ticket_Ticket_deletedByIdToUser          Ticket[]           @relation("Ticket_deletedByIdToUser")
   TicketApproval                           TicketApproval[]
   TicketAssignee                           TicketAssignee[]
   TicketComment                            TicketComment[]
@@ -155,6 +160,7 @@ model CategoryUserGroup {
 
 model Company {
   id         String       @id
+  code       String?      @unique
   name       String
   address    String?
   taxId      String?
@@ -169,16 +175,34 @@ model Company {
 model Department {
   id                                 String   @id
   name                               String
+  code                               String?
   companyId                          String
-  supervisorId                       String?  @unique
   createdAt                          DateTime @default(now())
   updatedAt                          DateTime
   Company                            Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  User_Department_supervisorIdToUser User?    @relation("Department_supervisorIdToUser", fields: [supervisorId], references: [id])
+  DepartmentApprover                 DepartmentApprover[]
   Ticket                             Ticket[]
   User_User_departmentIdToDepartment User[]   @relation("User_departmentIdToDepartment")
 
   @@unique([companyId, name])
+  @@unique([companyId, code])
+}
+
+// A department can now have more than one Approver — any one of them can
+// decide a ticket's approval request (first to act wins), mirroring how
+// TicketAssignee lets any assignee in a pool act on a ticket. Replaces the
+// old single, unique Department.supervisorId column.
+model DepartmentApprover {
+  id           String     @id
+  departmentId String
+  userId       String
+  createdAt    DateTime   @default(now())
+  Department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  User         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([departmentId, userId])
+  @@index([departmentId])
+  @@index([userId])
 }
 
 model LessonLearned {
@@ -261,6 +285,14 @@ model Ticket {
   closedAt                      DateTime?
   resolvedAt                    DateTime?
   autoCloseDueDate              DateTime?
+  // Soft delete — the row (and everything cascading to it: comments,
+  // history, etc.) is kept, just excluded from every list/search/report
+  // query by default. Ticket Management alone can still surface
+  // deletedAt-not-null rows via its "Show deleted" filter. See deleteTicket
+  // in app/actions/tickets.ts.
+  deletedAt                     DateTime?
+  deletedById                   String?
+  deletedReason                 String?
   // User-facing business date — shown/editable in place of createdAt (an
   // audit timestamp) everywhere the ticket surfaces in the UI. Defaults to
   // the moment of creation but is editable, unlike createdAt.
@@ -270,6 +302,7 @@ model Ticket {
   Category                      Category              @relation(fields: [categoryId], references: [id])
   Company                       Company               @relation(fields: [companyId], references: [id])
   User_Ticket_createdByIdToUser User                  @relation("Ticket_createdByIdToUser", fields: [createdById], references: [id])
+  User_Ticket_deletedByIdToUser User?                 @relation("Ticket_deletedByIdToUser", fields: [deletedById], references: [id])
   Department                    Department            @relation(fields: [departmentId], references: [id])
   Notification                  Notification[]
   TicketApproval                TicketApproval?
@@ -282,13 +315,17 @@ model Ticket {
   @@index([companyId, departmentId])
   @@index([createdById])
   @@index([status])
+  @@index([deletedAt])
 }
 
 model TicketApproval {
-  id             String         @id
-  ticketId       String         @unique
-  supervisorId   String
-  status         ApprovalStatus @default(PENDING)
+  id           String         @id
+  ticketId     String         @unique
+  // Who actually decided — null while PENDING, since the request now goes to
+  // every one of the department's approvers (DepartmentApprover) rather than
+  // one designated person; whoever acts first is recorded here.
+  supervisorId String?
+  status       ApprovalStatus @default(PENDING)
   // The admin's message when requesting approval. `comments` is the
   // supervisor's decision reason (approve/reject), set when `status` moves
   // off PENDING.
@@ -297,7 +334,7 @@ model TicketApproval {
   decidedAt      DateTime?
   createdAt      DateTime       @default(now())
   updatedAt      DateTime
-  User           User           @relation(fields: [supervisorId], references: [id])
+  User           User?          @relation(fields: [supervisorId], references: [id])
   Ticket         Ticket         @relation(fields: [ticketId], references: [id], onDelete: Cascade)
 }
 
@@ -404,4 +441,9 @@ enum UserStatus {
   ACTIVE
   INACTIVE
   SUSPENDED
+  // A brand-new Microsoft Entra ID sign-in with no existing account — see
+  // auth.ts. Can log in and browse, but can't open a ticket (no
+  // company/department to file one under yet) until an admin fills in their
+  // profile and moves them to ACTIVE.
+  PENDING
 }

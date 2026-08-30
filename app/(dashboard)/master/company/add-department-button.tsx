@@ -78,17 +78,25 @@ function AddDepartmentModal({
                   <input type="text" id="name" name="name" className="form-control" required />
                   {state?.errors?.name && <div className="text-danger small mt-1">{state.errors.name[0]}</div>}
                 </div>
+                <div className="mb-3">
+                  <label htmlFor="code" className="form-label">
+                    Department code
+                  </label>
+                  <input type="text" id="code" name="code" className="form-control" />
+                  {state?.errors?.code && <div className="text-danger small mt-1">{state.errors.code[0]}</div>}
+                </div>
                 <div>
-                  <label htmlFor="supervisorId" className="form-label">
-                    Supervisor
+                  <label htmlFor="approverIds" className="form-label">
+                    Approvers
                   </label>
                   <Select2Select
-                    name="supervisorId"
-                    placeholder="No supervisor"
+                    name="approverIds"
+                    multiple
+                    placeholder="No approvers"
                     options={supervisors}
                   />
-                  {state?.errors?.supervisorId && (
-                    <div className="text-danger small mt-1">{state.errors.supervisorId[0]}</div>
+                  {state?.errors?.approverIds && (
+                    <div className="text-danger small mt-1">{state.errors.approverIds[0]}</div>
                   )}
                 </div>
               </div>

@@ -15,3 +15,13 @@ export function getHomePathForRole(role: Role): string {
       return "/tickets";
   }
 }
+
+// Display label for a Role — "Approver" everywhere in the UI, though the
+// underlying enum value stays SUPERVISOR (renaming the enum would mean a
+// schema migration touching every existing User row's stored role; this is
+// a wording-only change).
+export const ROLE_LABEL: Record<Role, string> = {
+  ADMIN: "Admin",
+  SUPERVISOR: "Approver",
+  USER: "User",
+};

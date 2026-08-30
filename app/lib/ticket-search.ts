@@ -59,6 +59,7 @@ function toResult(ticket: TicketRow, program: SearchProgram, href: string): Tick
 // (the ticket's creator), Department, Company name.
 function matchWhere(query: string): Prisma.TicketWhereInput {
   return {
+    deletedAt: null,
     OR: [
       { title: { contains: query, mode: "insensitive" } },
       { ticketNumber: { contains: query, mode: "insensitive" } },
@@ -141,7 +142,11 @@ export async function searchTickets(userId: string, role: Role, query: string): 
       prisma.ticket
         .findMany({
           where: {
-            AND: [match, { TicketApproval: { status: "PENDING", ...(isAdmin ? {} : { supervisorId: userId }) } }],
+            AND: [
+              match,
+              { TicketApproval: { status: "PENDING" } },
+              ...(isAdmin ? [] : [{ Department: { DepartmentApprover: { some: { userId } } } }]),
+            ],
           },
           include: ticketInclude,
           take: RESULT_CAP,

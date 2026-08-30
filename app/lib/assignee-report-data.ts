@@ -32,6 +32,7 @@ export async function getAssigneeReportData(dateFrom: Date | null, dateTo: Date 
     }),
     prisma.ticket.findMany({
       where: {
+        deletedAt: null,
         TicketAssignee: { some: {} },
         ...(dateFrom || dateTo
           ? {

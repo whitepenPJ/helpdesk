@@ -161,6 +161,7 @@ function buildServer(user: McpAuthedUser): McpServer {
     async ({ status }) => {
       const tickets = await prisma.ticket.findMany({
         where: {
+          deletedAt: null,
           ...(user.role === "ADMIN" ? {} : { createdById: user.id }),
           ...(status ? { status } : {}),
         },

@@ -16,7 +16,7 @@ export default async function ViewCompanyPage({ params }: PageProps<"/master/com
     prisma.department.findMany({
       where: { companyId: id },
       orderBy: { name: "asc" },
-      include: { User_Department_supervisorIdToUser: { select: { name: true } } },
+      include: { DepartmentApprover: { select: { User: { select: { name: true } } } } },
     }),
   ]);
 
@@ -60,12 +60,14 @@ export default async function ViewCompanyPage({ params }: PageProps<"/master/com
                 companyId={company.id}
                 initialValues={{
                   name: company.name,
+                  code: company.code,
                   isActive: company.isActive,
                 }}
                 departments={departments.map((d) => ({
                   id: d.id,
                   name: d.name,
-                  supervisorName: d.User_Department_supervisorIdToUser?.name ?? null,
+                  code: d.code,
+                  approverNames: d.DepartmentApprover.map((a) => a.User.name),
                 }))}
               />
             </div>

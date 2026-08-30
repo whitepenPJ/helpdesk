@@ -6,6 +6,8 @@ import { formatAssignment } from "@/app/lib/ticket-format";
 import { Prisma } from "@/app/generated/prisma/client";
 import { SortableTh } from "../../_components/sortable-th";
 import { Pagination } from "../../_components/pagination";
+import { PageSizeSelect } from "../../_components/page-size-select";
+import { parsePageSize } from "@/app/lib/page-size";
 import { FormVendorScripts } from "../../_components/form-vendor-scripts";
 import { type SortDir } from "@/app/lib/table-sort";
 import { STATUS_BADGE, PRIORITY_BADGE, STATUSES } from "../../tickets/ticket-badges";
@@ -15,7 +17,6 @@ import { TicketRowActions } from "./_components/ticket-row-actions";
 
 export const metadata: Metadata = { title: "Ticket Management" };
 
-const PAGE_SIZE = 15;
 
 // The required *default* display order doesn't match the enum's declared
 // order in the schema (which Prisma's `orderBy` would otherwise use), so
@@ -48,10 +49,11 @@ function buildOrderBy(
 export default async function TicketManagementPage({ searchParams }: PageProps<"/transaction/ticket-management">) {
   await requireAdmin();
 
-  const { q, page, sort, dir, status, unassigned } = await searchParams;
+  const { q, page, pageSize: pageSizeParam, sort, dir, status, unassigned, showDeleted } = await searchParams;
   const query = typeof q === "string" ? q.trim() : "";
+  const pageSize = parsePageSize(typeof pageSizeParam === "string" ? pageSizeParam : undefined);
   const currentPage = Math.max(1, Number(page) || 1);
-  const skip = (currentPage - 1) * PAGE_SIZE;
+  const skip = (currentPage - 1) * pageSize;
   const sortParam = typeof sort === "string" ? sort : undefined;
   const isSorted = sortParam !== undefined && (SORT_COLUMNS as readonly string[]).includes(sortParam);
   const sortBy = isSorted ? (sortParam as SortColumn) : "transactionDate";
@@ -69,8 +71,10 @@ export default async function TicketManagementPage({ searchParams }: PageProps<"
     .map((s) => s.trim())
     .filter((s): s is (typeof STATUSES)[number] => (STATUSES as readonly string[]).includes(s));
   const unassignedOnly = unassigned === "1";
+  const showDeletedOnly = showDeleted === "1";
 
   const where: Prisma.TicketWhereInput = {
+    deletedAt: showDeletedOnly ? { not: null } : null,
     ...(query
       ? {
           OR: [
@@ -86,10 +90,12 @@ export default async function TicketManagementPage({ searchParams }: PageProps<"
   const ticketInclude = {
     Category: true,
     Company: true,
-    Department: { include: { User_Department_supervisorIdToUser: { select: { name: true, email: true } } } },
+    Department: { include: { DepartmentApprover: { select: { User: { select: { name: true, email: true } } } } } },
     User_Ticket_createdByIdToUser: { select: { name: true, email: true } },
+    User_Ticket_deletedByIdToUser: { select: { name: true } },
     TicketAssignee: { select: { User: { select: { id: true, name: true } } } },
     TicketAssignedGroup: { select: { UserGroup: { select: { id: true, name: true } } } },
+    TicketHistory: { orderBy: { timestamp: "asc" }, include: { User: { select: { name: true } } } },
   } satisfies Prisma.TicketInclude;
 
   const [assignees, groups] = await Promise.all([
@@ -115,7 +121,7 @@ export default async function TicketManagementPage({ searchParams }: PageProps<"
         include: ticketInclude,
         orderBy: buildOrderBy(sortBy, sortDir),
         skip,
-        take: PAGE_SIZE,
+        take: pageSize,
       }),
       prisma.ticket.count({ where }),
     ]);
@@ -128,11 +134,12 @@ export default async function TicketManagementPage({ searchParams }: PageProps<"
     const unassignedFragment = unassignedOnly
       ? Prisma.sql`AND NOT EXISTS (SELECT 1 FROM "TicketAssignee" ta WHERE ta."ticketId" = "Ticket".id)`
       : Prisma.empty;
+    const deletedFragment = showDeletedOnly ? Prisma.sql`"deletedAt" IS NOT NULL` : Prisma.sql`"deletedAt" IS NULL`;
 
     const [idRows, count] = await Promise.all([
       prisma.$queryRaw<{ id: string }[]>(Prisma.sql`
         SELECT id FROM "Ticket"
-        WHERE 1=1 ${searchFragment} ${statusFragment} ${unassignedFragment}
+        WHERE ${deletedFragment} ${searchFragment} ${statusFragment} ${unassignedFragment}
         ORDER BY CASE status
           WHEN 'NEW' THEN 0
           WHEN 'WAITING' THEN 1
@@ -142,7 +149,7 @@ export default async function TicketManagementPage({ searchParams }: PageProps<"
           WHEN 'CLOSED' THEN 5
         END,
         "transactionDate" ASC
-        LIMIT ${PAGE_SIZE} OFFSET ${skip}
+        LIMIT ${pageSize} OFFSET ${skip}
       `),
       prisma.ticket.count({ where }),
     ]);
@@ -154,13 +161,15 @@ export default async function TicketManagementPage({ searchParams }: PageProps<"
     tickets = orderedIds.map((id) => ticketsById.get(id)).filter((t): t is NonNullable<typeof t> => Boolean(t));
   }
 
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const linkQuery = {
     ...(query ? { q: query } : {}),
     ...(statusParam ? { status: statusParam } : {}),
     ...(unassignedOnly ? { unassigned: "1" } : {}),
+    ...(showDeletedOnly ? { showDeleted: "1" } : {}),
+    pageSize: String(pageSize),
   };
-  const hasActiveFilter = Boolean(query || statusParam || unassignedOnly);
+  const hasActiveFilter = Boolean(query || statusParam || unassignedOnly || showDeletedOnly);
 
   return (
     <>
@@ -241,6 +250,19 @@ export default async function TicketManagementPage({ searchParams }: PageProps<"
                         Unassigned only
                       </label>
                     </div>
+                    <div className="form-check d-flex align-items-center gap-1 mb-0">
+                      <input
+                        className="form-check-input mt-0"
+                        type="checkbox"
+                        id="show-deleted-filter"
+                        name="showDeleted"
+                        value="1"
+                        defaultChecked={showDeletedOnly}
+                      />
+                      <label className="form-check-label fs-7" htmlFor="show-deleted-filter">
+                        Show deleted
+                      </label>
+                    </div>
                     <button type="submit" className="btn btn-sm btn-outline-secondary">
                       <i className="bi bi-funnel me-1" aria-hidden="true"></i>
                       Filter
@@ -264,6 +286,7 @@ export default async function TicketManagementPage({ searchParams }: PageProps<"
                           <SortableTh label="Transaction Date" column="transactionDate" pathname="/transaction/ticket-management" query={linkQuery} sortBy={activeSortBy} sortDir={sortDir} />
                           <SortableTh label="Status" column="status" pathname="/transaction/ticket-management" query={linkQuery} sortBy={activeSortBy} sortDir={sortDir} />
                           <th>Assignee</th>
+                          {showDeletedOnly && <th>Deleted</th>}
                           <th className="text-end">Actions</th>
                         </tr>
                       </thead>
@@ -289,28 +312,59 @@ export default async function TicketManagementPage({ searchParams }: PageProps<"
                                 ticket.TicketAssignedGroup.map((g) => g.UserGroup.name)
                               )}
                             </td>
+                            {showDeletedOnly && (
+                              <td>
+                                <div className="fs-7">
+                                  {ticket.User_Ticket_deletedByIdToUser?.name ?? "—"}
+                                  {ticket.deletedAt && <> · {formatDateTime(ticket.deletedAt)}</>}
+                                </div>
+                                {ticket.deletedReason && (
+                                  <div className="fs-7 text-secondary">{ticket.deletedReason}</div>
+                                )}
+                              </td>
+                            )}
                             <td className="text-end">
-                              <TicketRowActions
-                                ticket={{
-                                  id: ticket.id,
-                                  ticketNumber: ticket.ticketNumber,
-                                  status: ticket.status,
-                                  priority: ticket.priority,
-                                  companyId: ticket.companyId,
-                                  assigneeIds: ticket.TicketAssignee.map((a) => a.User.id),
-                                  assignedGroupIds: ticket.TicketAssignedGroup.map((g) => g.UserGroup.id),
-                                  supervisor: ticket.Department.User_Department_supervisorIdToUser,
-                                }}
-                                assignees={assignees}
-                                groups={groups}
-                              />
+                              {showDeletedOnly ? (
+                                <Link
+                                  href={`/transaction/ticket-management/${ticket.id}`}
+                                  className="btn btn-sm btn-outline-secondary"
+                                  title="View"
+                                  aria-label={`View ${ticket.ticketNumber}`}
+                                >
+                                  <i className="bi bi-eye" aria-hidden="true"></i>
+                                </Link>
+                              ) : (
+                                <TicketRowActions
+                                  ticket={{
+                                    id: ticket.id,
+                                    ticketNumber: ticket.ticketNumber,
+                                    status: ticket.status,
+                                    priority: ticket.priority,
+                                    companyId: ticket.companyId,
+                                    assigneeIds: ticket.TicketAssignee.map((a) => a.User.id),
+                                    assignedGroupIds: ticket.TicketAssignedGroup.map((g) => g.UserGroup.id),
+                                    approvers: ticket.Department.DepartmentApprover.map((a) => a.User),
+                                    deletedAt: ticket.deletedAt,
+                                  }}
+                                  history={ticket.TicketHistory.map((h) => ({
+                                    id: h.id,
+                                    action: h.action,
+                                    previousState: h.previousState,
+                                    newState: h.newState,
+                                    timestamp: h.timestamp,
+                                    actorName: h.User?.name ?? null,
+                                  }))}
+                                  assignees={assignees}
+                                  groups={groups}
+                                />
+                              )}
                             </td>
                           </tr>
                         ))}
                         {tickets.length === 0 && (
                           <tr>
-                            <td colSpan={8} className="text-center text-secondary py-4">
-                              No tickets found.
+                            <td colSpan={showDeletedOnly ? 9 : 8} className="text-center text-secondary py-4">
+                              {showDeletedOnly ? "No deleted tickets." : "No tickets found."}
                             </td>
                           </tr>
                         )}
@@ -318,14 +372,18 @@ export default async function TicketManagementPage({ searchParams }: PageProps<"
                     </table>
                   </div>
                 </div>
-                <div className="card-footer clearfix">
-                  <div className="float-start pt-1 fs-7 text-body-secondary">
-                    Showing {tickets.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1} to{" "}
-                    {(currentPage - 1) * PAGE_SIZE + tickets.length} of {total} tickets
+                <div className="card-footer d-flex flex-wrap justify-content-between align-items-center gap-2">
+                  <div className="d-flex flex-wrap align-items-center gap-3">
+                    <div className="fs-7 text-body-secondary">
+                      Showing {tickets.length === 0 ? 0 : (currentPage - 1) * pageSize + 1} to{" "}
+                      {(currentPage - 1) * pageSize + tickets.length} of {total} tickets
+                    </div>
+                    <PageSizeSelect pageSize={pageSize} />
                   </div>
                   <Pagination
                     currentPage={currentPage}
                     totalPages={totalPages}
+                    className="pagination pagination-sm m-0"
                     makeHref={(p) => ({
                       pathname: "/transaction/ticket-management",
                       query: { ...linkQuery, ...(isSorted ? { sort: sortBy, dir: sortDir } : {}), page: p },

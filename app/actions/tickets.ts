@@ -82,27 +82,38 @@ export async function createTicket(_prevState: TicketFormState, formData: FormDa
   const description = formData.get("description");
   const categoryId = formData.get("categoryId");
   const telephone = formData.get("telephone");
-  const companyId = formData.get("companyId");
-  const departmentId = formData.get("departmentId");
   const requestedCreatorId = formData.get("creatorId");
+  const needApproval = formData.get("needApproval") === "true";
   const attachmentFiles = formData.getAll("attachments").filter((f) => f instanceof File) as File[];
 
-  // Only an admin's chosen value is honored — anyone else's submission is
-  // ignored server-side regardless of what the (disabled) field contained,
+  // Only an admin's, or a user with Master User's "Open Ticket for Other
+  // User" option, chosen value is honored — anyone else's submission is
+  // ignored server-side regardless of what the (read-only) field contained,
   // since a direct POST can send whatever it wants.
   const isAdmin = session.user.role === "ADMIN";
-  const creatorId = isAdmin && typeof requestedCreatorId === "string" && requestedCreatorId ? requestedCreatorId : session.user.id;
+  const submitter = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { canOpenTicketForOthers: true },
+  });
+  const canChangeCreator = isAdmin || Boolean(submitter?.canOpenTicketForOthers);
+  const creatorId =
+    canChangeCreator && typeof requestedCreatorId === "string" && requestedCreatorId
+      ? requestedCreatorId
+      : session.user.id;
 
   const transactionDateRaw = formData.get("transactionDate");
   const transactionDate = parseTransactionDate(formData);
 
+  // Company/Department are never form-submitted — they follow the Creator's
+  // own profile (read-only in the UI, re-derived here regardless of what a
+  // direct POST might send). Filled in below once the creator is resolved.
   const values: TicketFormValues = {
     title: typeof title === "string" ? title : "",
     description: typeof description === "string" ? description : "",
     categoryId: typeof categoryId === "string" ? categoryId : "",
     telephone: typeof telephone === "string" ? telephone : "",
-    companyId: typeof companyId === "string" ? companyId : "",
-    departmentId: typeof departmentId === "string" ? departmentId : "",
+    companyId: "",
+    departmentId: "",
     creatorId,
     transactionDate: typeof transactionDateRaw === "string" ? transactionDateRaw : "",
   };
@@ -121,21 +132,19 @@ export async function createTicket(_prevState: TicketFormState, formData: FormDa
   if (typeof categoryId !== "string" || !categoryId) {
     errors.categoryId = ["Select a category."];
   }
-  if (typeof companyId !== "string" || !companyId) {
-    errors.companyId = ["Select a company."];
-  }
-  if (typeof departmentId !== "string" || !departmentId) {
-    errors.departmentId = ["Select a department."];
-  }
 
   if (Object.keys(errors).length > 0) {
     return { errors, values };
   }
 
-  const [category, department, creator, categoryAdmins, categoryGroups] = await Promise.all([
+  const [category, creator, categoryAdmins, categoryGroups] = await Promise.all([
     prisma.category.findUnique({ where: { id: categoryId as string } }),
-    prisma.department.findUnique({ where: { id: departmentId as string } }),
-    prisma.user.findUnique({ where: { id: creatorId } }),
+    prisma.user.findUnique({
+      where: { id: creatorId },
+      include: {
+        Department_User_departmentIdToDepartment: { include: { DepartmentApprover: true } },
+      },
+    }),
     prisma.categoryAdmin.findMany({
       where: { categoryId: categoryId as string, User: { status: "ACTIVE" } },
       select: { adminId: true, User: { select: { name: true } } },
@@ -149,15 +158,18 @@ export async function createTicket(_prevState: TicketFormState, formData: FormDa
   if (!category) {
     return { errors: { categoryId: ["Selected category was not found."] }, values };
   }
-  if (!department) {
-    return { errors: { departmentId: ["Selected department was not found."] }, values };
-  }
-  if (department.companyId !== companyId) {
-    return { errors: { departmentId: ["Selected department does not belong to the selected company."] }, values };
-  }
   if (!creator) {
     return { errors: { creatorId: ["Selected creator was not found."] }, values };
   }
+  const department = creator.Department_User_departmentIdToDepartment;
+  if (!creator.companyId || !department) {
+    return {
+      errors: { creatorId: ["This user has no company/department assigned yet — update their profile first."] },
+      values,
+    };
+  }
+  values.companyId = creator.companyId;
+  values.departmentId = department.id;
 
   // A category with responsible users and/or user groups configured
   // (Master Category's "Responsible Users"/"Responsible User Groups")
@@ -179,8 +191,8 @@ export async function createTicket(_prevState: TicketFormState, formData: FormDa
           title: (title as string).trim(),
           description: (description as string).trim(),
           categoryId: categoryId as string,
-          companyId: companyId as string,
-          departmentId: departmentId as string,
+          companyId: creator.companyId,
+          departmentId: department.id,
           telephone: (telephone as string).trim(),
           attachments,
           createdById: creatorId,
@@ -250,9 +262,49 @@ export async function createTicket(_prevState: TicketFormState, formData: FormDa
     }).catch((error) => console.error("createTicket: notifyTicketAssigned failed", error));
   }
 
+  // "Need approval" — re-checked server-side (the checkbox is only enabled
+  // client-side when the department has an approver, but a direct POST
+  // could send it regardless). Snapshots initialStatus into
+  // preApprovalStatus exactly like requestTicketApproval does for an
+  // already-created ticket, so approval restores the right status.
+  const approverIds = department.DepartmentApprover.map((a) => a.userId);
+  if (needApproval && approverIds.length > 0) {
+    await prisma.$transaction([
+      prisma.ticketApproval.create({
+        data: {
+          id: randomUUID(),
+          ticketId,
+          status: "PENDING",
+          updatedAt: new Date(),
+        },
+      }),
+      prisma.ticket.update({
+        where: { id: ticketId },
+        data: { status: "WAITING", preApprovalStatus: initialStatus, updatedAt: new Date() },
+      }),
+      prisma.ticketHistory.create({
+        data: {
+          id: randomUUID(),
+          ticketId,
+          actorId: session.user.id,
+          action: "Status changed",
+          previousState: initialStatus,
+          newState: "WAITING",
+        },
+      }),
+    ]);
+
+    await notifyApprovalRequested(ticketId, approverIds).catch((error) =>
+      console.error("createTicket: notifyApprovalRequested failed", error)
+    );
+  }
+
   revalidatePath("/tickets");
   if (shouldAutoAssign) {
     revalidatePath("/tickets/assigned");
+  }
+  if (needApproval && approverIds.length > 0) {
+    revalidatePath("/tickets/approval");
   }
   redirect(`/tickets/${ticketId}`);
 }
@@ -367,26 +419,61 @@ export async function editTicket(
   redirect(`/tickets/${ticketId}`);
 }
 
-// Ticket owner (or an admin) deletes a ticket that's still NEW — same
-// eligibility check as editTicket, re-verified server-side since this is a
-// public endpoint reachable directly, not just from the button that's hidden
-// once a ticket moves past NEW.
-export async function deleteTicket(ticketId: string): Promise<void> {
+export type DeleteTicketState = { error?: string } | undefined;
+
+// Ticket owner (or an admin) deletes a ticket, in any status — re-verified
+// server-side since this is a public endpoint reachable directly, not just
+// from the button. Soft delete only: the row (and everything cascading to
+// it — comments, history, etc.) stays in place, just stamped
+// deletedAt/deletedById/deletedReason and excluded from every list/search/
+// report query by default (see the `deletedAt: null` filters throughout).
+// Ticket Management alone can still surface these via its "Show deleted"
+// filter.
+export async function deleteTicket(
+  ticketId: string,
+  _prevState: DeleteTicketState,
+  formData: FormData
+): Promise<DeleteTicketState> {
   const session = await requireUser();
   const isAdmin = session.user.role === "ADMIN";
 
   const ticket = await prisma.ticket.findUnique({
     where: { id: ticketId },
-    select: { createdById: true, status: true },
+    select: { createdById: true, deletedAt: true },
   });
-  if (!ticket) return;
-  if (ticket.createdById !== session.user.id && !isAdmin) return;
-  if (ticket.status !== "NEW") return;
+  if (!ticket || ticket.deletedAt) {
+    return { error: "Ticket not found." };
+  }
+  if (ticket.createdById !== session.user.id && !isAdmin) {
+    return { error: "You don't have permission to delete this ticket." };
+  }
 
-  await prisma.ticket.delete({ where: { id: ticketId } });
+  const reason = formData.get("reason");
+  if (typeof reason !== "string" || reason.trim().length === 0) {
+    return { error: "Enter a reason for deleting this ticket." };
+  }
+
+  const now = new Date();
+  await prisma.$transaction([
+    prisma.ticket.update({
+      where: { id: ticketId },
+      data: { deletedAt: now, deletedById: session.user.id, deletedReason: reason.trim() },
+    }),
+    prisma.ticketHistory.create({
+      data: {
+        id: randomUUID(),
+        ticketId,
+        actorId: session.user.id,
+        action: "Ticket deleted",
+        newState: reason.trim(),
+      },
+    }),
+  ]);
 
   revalidatePath("/tickets");
-  redirect("/tickets");
+  revalidatePath("/tickets/assigned");
+  revalidatePath("/transaction/ticket-management");
+  return undefined;
 }
 
 // Admin-only edit from the Ticket Management screen: reassign to a user
@@ -800,7 +887,7 @@ export async function requestTicketApproval(
 
   const ticket = await prisma.ticket.findUnique({
     where: { id: ticketId },
-    include: { Department: { select: { supervisorId: true } } },
+    include: { Department: { select: { DepartmentApprover: { select: { userId: true } } } } },
   });
   if (!ticket) return { error: "Ticket not found." };
 
@@ -813,8 +900,8 @@ export async function requestTicketApproval(
   if (ticket.status === "CLOSED" || ticket.status === "WAITING") {
     return { error: `Can't request approval while the ticket is ${ticket.status}.` };
   }
-  const supervisorId = ticket.Department.supervisorId;
-  if (!supervisorId) return { error: "This ticket's department has no supervisor assigned." };
+  const approverIds = ticket.Department.DepartmentApprover.map((a) => a.userId);
+  if (approverIds.length === 0) return { error: "This ticket's department has no approver assigned." };
 
   const messageValue = formData.get("message");
   const requestMessage = typeof messageValue === "string" && messageValue.trim() ? messageValue.trim() : null;
@@ -825,13 +912,12 @@ export async function requestTicketApproval(
       create: {
         id: randomUUID(),
         ticketId,
-        supervisorId,
         status: "PENDING",
         requestMessage,
         updatedAt: new Date(),
       },
       update: {
-        supervisorId,
+        supervisorId: null,
         status: "PENDING",
         requestMessage,
         decidedAt: null,
@@ -861,7 +947,7 @@ export async function requestTicketApproval(
   revalidatePath("/tickets/approval");
   revalidatePath(`/tickets/approval/${ticketId}`);
 
-  await notifyApprovalRequested(ticketId, supervisorId).catch((error) =>
+  await notifyApprovalRequested(ticketId, approverIds).catch((error) =>
     console.error("requestTicketApproval: notifyApprovalRequested failed", error)
   );
 

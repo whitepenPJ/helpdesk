@@ -1,3 +1,5 @@
+import { ReportDateField } from "./report-date-field";
+
 // Plain server-rendered filter — Assignee/Category/Ticket reports only need
 // a Date From/To pair (no Select2 dropdowns), so unlike report-filter-form
 // this needs no client-side state or cascading logic.
@@ -21,16 +23,10 @@ export function DateRangeFilterForm({
         <div className="card-body">
           <div className="row g-3">
             <div className="col-md-4">
-              <label htmlFor="dateFrom" className="form-label">
-                Date From
-              </label>
-              <input type="date" id="dateFrom" name="dateFrom" className="form-control" defaultValue={dateFrom} />
+              <ReportDateField id="dateFrom" name="dateFrom" label="Date From" defaultValue={dateFrom} />
             </div>
             <div className="col-md-4">
-              <label htmlFor="dateTo" className="form-label">
-                Date To
-              </label>
-              <input type="date" id="dateTo" name="dateTo" className="form-control" defaultValue={dateTo} />
+              <ReportDateField id="dateTo" name="dateTo" label="Date To" defaultValue={dateTo} />
             </div>
           </div>
         </div>

@@ -86,36 +86,39 @@ export async function getAdminDashboardData(): Promise<AdminDashboardData> {
     ratingRowsByAssignee,
     recentTicketsRaw,
   ] = await Promise.all([
-    prisma.ticket.count({ where: { status: { in: OPEN_STATUSES } } }),
+    prisma.ticket.count({ where: { status: { in: OPEN_STATUSES }, deletedAt: null } }),
     // Matches the "Unassigned" KPI's link target 1:1 (Ticket Management's
     // `unassigned=1` filter) — deliberately not narrowed by status, so the
     // tile's number always equals the row count on the page it links to.
-    prisma.ticket.count({ where: { TicketAssignee: { none: {} } } }),
-    prisma.ticket.count({ where: { status: "WAITING" } }),
-    prisma.ticket.count({ where: { status: { in: AWAITING_CLOSE_STATUSES } } }),
-    prisma.ticket.findMany({ where: { createdAt: { gte: trendSince } }, select: { createdAt: true } }),
+    prisma.ticket.count({ where: { TicketAssignee: { none: {} }, deletedAt: null } }),
+    prisma.ticket.count({ where: { status: "WAITING", deletedAt: null } }),
+    prisma.ticket.count({ where: { status: { in: AWAITING_CLOSE_STATUSES }, deletedAt: null } }),
     prisma.ticket.findMany({
-      where: { closedAt: { gte: trendSince } },
+      where: { createdAt: { gte: trendSince }, deletedAt: null },
+      select: { createdAt: true },
+    }),
+    prisma.ticket.findMany({
+      where: { closedAt: { gte: trendSince }, deletedAt: null },
       select: { closedAt: true },
     }),
-    prisma.ticket.count({ where: { createdAt: { gte: recapSince } } }),
-    prisma.ticket.count({ where: { closedAt: { gte: recapSince } } }),
+    prisma.ticket.count({ where: { createdAt: { gte: recapSince }, deletedAt: null } }),
+    prisma.ticket.count({ where: { closedAt: { gte: recapSince }, deletedAt: null } }),
     prisma.ticket.findMany({
-      where: { resolvedAt: { gte: recapSince } },
+      where: { resolvedAt: { gte: recapSince }, deletedAt: null },
       select: { createdAt: true, resolvedAt: true },
     }),
     prisma.ticket.aggregate({
-      where: { ratingScore: { not: null }, closedAt: { gte: recapSince } },
+      where: { ratingScore: { not: null }, closedAt: { gte: recapSince }, deletedAt: null },
       _avg: { ratingScore: true },
     }),
-    prisma.ticket.groupBy({ by: ["status"], _count: { _all: true } }),
+    prisma.ticket.groupBy({ by: ["status"], where: { deletedAt: null }, _count: { _all: true } }),
     prisma.ticket.groupBy({
       by: ["priority"],
-      where: { status: { not: "CLOSED" } },
+      where: { status: { not: "CLOSED" }, deletedAt: null },
       _count: { _all: true },
     }),
     prisma.ticket.findMany({
-      where: { TicketAssignee: { none: {} }, status: { notIn: ["CLOSED"] } },
+      where: { TicketAssignee: { none: {} }, status: { notIn: ["CLOSED"] }, deletedAt: null },
       orderBy: [{ priority: "desc" }, { createdAt: "asc" }],
       take: 8,
       select: {
@@ -130,19 +133,20 @@ export async function getAdminDashboardData(): Promise<AdminDashboardData> {
     }),
     prisma.ticketAssignee.groupBy({
       by: ["userId"],
-      where: { Ticket: { status: "ASSIGNED" } },
+      where: { Ticket: { status: "ASSIGNED", deletedAt: null } },
       _count: { _all: true },
     }),
     prisma.ticketAssignee.groupBy({
       by: ["userId"],
-      where: { Ticket: { resolvedAt: { gte: recapSince } } },
+      where: { Ticket: { resolvedAt: { gte: recapSince }, deletedAt: null } },
       _count: { _all: true },
     }),
     prisma.ticketAssignee.findMany({
-      where: { Ticket: { ratingScore: { not: null } } },
+      where: { Ticket: { ratingScore: { not: null }, deletedAt: null } },
       select: { userId: true, Ticket: { select: { ratingScore: true } } },
     }),
     prisma.ticket.findMany({
+      where: { deletedAt: null },
       orderBy: { createdAt: "desc" },
       take: 10,
       select: {

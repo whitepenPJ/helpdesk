@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Script from "next/script";
 import type { TicketStatus, Priority } from "@/app/generated/prisma/client";
+import { getChartTheme, contrastDataLabelStyle } from "../../_components/chart-theme";
 
 declare global {
   interface Window {
@@ -36,6 +37,7 @@ export type ReportChartsProps = {
 
 function renderCharts(props: ReportChartsProps) {
   const ApexCharts = window.ApexCharts;
+  const { mode, foreColor, gridColor } = getChartTheme();
 
   const trendEl = document.querySelector("#report-trend-chart");
   if (trendEl) {
@@ -44,7 +46,9 @@ function renderCharts(props: ReportChartsProps) {
         { name: "Created", data: props.trend.map((p) => p.created) },
         { name: "Closed", data: props.trend.map((p) => p.closed) },
       ],
-      chart: { height: 220, type: "area", toolbar: { show: false } },
+      chart: { height: 220, type: "area", toolbar: { show: false }, background: "transparent", foreColor },
+      theme: { mode },
+      grid: { borderColor: gridColor },
       legend: { show: true, position: "top" },
       colors: ["#0d6efd", "#198754"],
       dataLabels: { enabled: false },
@@ -57,12 +61,14 @@ function renderCharts(props: ReportChartsProps) {
   const statusEl = document.querySelector("#report-status-donut-chart");
   const statusData = props.statusBreakdown.filter((s) => s.count > 0);
   if (statusEl && statusData.length > 0) {
+    const colors = statusData.map((s) => STATUS_COLOR[s.status]);
     new ApexCharts(statusEl, {
       series: statusData.map((s) => s.count),
-      chart: { type: "donut", height: 260 },
+      chart: { type: "donut", height: 260, background: "transparent", foreColor },
+      theme: { mode },
       labels: statusData.map((s) => s.status),
-      colors: statusData.map((s) => STATUS_COLOR[s.status]),
-      dataLabels: { enabled: true },
+      colors,
+      dataLabels: { enabled: true, ...contrastDataLabelStyle(colors) },
       legend: { position: "bottom" },
     }).render();
   } else if (statusEl) {
@@ -72,12 +78,15 @@ function renderCharts(props: ReportChartsProps) {
   const priorityEl = document.querySelector("#report-priority-bar-chart");
   const priorityData = props.priorityBreakdown.filter((p) => p.count > 0);
   if (priorityEl && priorityData.length > 0) {
+    const colors = priorityData.map((p) => PRIORITY_COLOR[p.priority]);
     new ApexCharts(priorityEl, {
       series: [{ name: "Tickets", data: priorityData.map((p) => p.count) }],
-      chart: { type: "bar", height: 260, toolbar: { show: false } },
+      chart: { type: "bar", height: 260, toolbar: { show: false }, background: "transparent", foreColor },
+      theme: { mode },
+      grid: { borderColor: gridColor },
       plotOptions: { bar: { horizontal: true, distributed: true, borderRadius: 4 } },
-      colors: priorityData.map((p) => PRIORITY_COLOR[p.priority]),
-      dataLabels: { enabled: true },
+      colors,
+      dataLabels: { enabled: true, ...contrastDataLabelStyle(colors) },
       legend: { show: false },
       xaxis: { categories: priorityData.map((p) => p.priority) },
     }).render();

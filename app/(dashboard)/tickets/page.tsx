@@ -2,21 +2,21 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { prisma } from "@/app/lib/db";
 import { requireUser } from "@/app/lib/dal";
-import { deleteTicket } from "@/app/actions/tickets";
-import { DeleteButton } from "../_components/delete-button";
+import { DeleteTicketButton } from "./delete-ticket-button";
+import { TicketTimelineButton } from "../_components/ticket-timeline-button";
 import { SortableTh } from "../_components/sortable-th";
 import { Select2Select } from "../_components/select2-select";
 import { FormVendorScripts } from "../_components/form-vendor-scripts";
 import { Pagination } from "../_components/pagination";
+import { PageSizeSelect } from "../_components/page-size-select";
 import { TicketSearchInput } from "./ticket-search-input";
 import type { SortDir } from "@/app/lib/table-sort";
 import { Prisma, type TicketStatus } from "@/app/generated/prisma/client";
 import { STATUS_BADGE, PRIORITY_BADGE, STATUSES } from "./ticket-badges";
 import { formatDateTime } from "@/app/lib/date-format";
+import { parsePageSize } from "@/app/lib/page-size";
 
 export const metadata: Metadata = { title: "Tickets" };
-
-const PAGE_SIZE = 10;
 
 const SORT_COLUMNS = ["ticketNumber", "title", "category", "company", "priority", "status", "transactionDate"] as const;
 type SortColumn = (typeof SORT_COLUMNS)[number];
@@ -32,7 +32,12 @@ function buildOrderBy(sortBy: SortColumn, sortDir: SortDir): Prisma.TicketOrderB
   }
 }
 
-const ticketInclude = { Category: true, Company: true, Department: true } satisfies Prisma.TicketInclude;
+const ticketInclude = {
+  Category: true,
+  Company: true,
+  Department: true,
+  TicketHistory: { orderBy: { timestamp: "asc" }, include: { User: { select: { name: true } } } },
+} satisfies Prisma.TicketInclude;
 
 // Status sets behind each clickable summary card, below.
 const ACTIVE_STATUSES: TicketStatus[] = STATUSES.filter((s) => s !== "CLOSED");
@@ -51,12 +56,13 @@ export default async function TicketsPage({ searchParams }: PageProps<"/tickets"
   const session = await requireUser();
   const isAdmin = session.user.role === "ADMIN";
 
-  const { q, status, page, sort, dir } = await searchParams;
+  const { q, status, page, pageSize: pageSizeParam, sort, dir } = await searchParams;
   const query = typeof q === "string" ? q : "";
   const statusParam = typeof status === "string" ? [status] : (status ?? []);
   const statusFilters = statusParam.filter((s): s is TicketStatus => (STATUSES as readonly string[]).includes(s));
+  const pageSize = parsePageSize(typeof pageSizeParam === "string" ? pageSizeParam : undefined);
   const currentPage = Math.max(1, Number(page) || 1);
-  const skip = (currentPage - 1) * PAGE_SIZE;
+  const skip = (currentPage - 1) * pageSize;
   const sortParam = typeof sort === "string" ? sort : undefined;
   const isSorted = sortParam !== undefined && (SORT_COLUMNS as readonly string[]).includes(sortParam);
   const sortBy = isSorted ? (sortParam as SortColumn) : "transactionDate";
@@ -66,6 +72,7 @@ export default async function TicketsPage({ searchParams }: PageProps<"/tickets"
   const activeSortBy = isSorted ? sortBy : "";
 
   const where: Prisma.TicketWhereInput = {
+    deletedAt: null,
     ...(isAdmin ? {} : { createdById: session.user.id }),
     ...(query
       ? {
@@ -88,7 +95,7 @@ export default async function TicketsPage({ searchParams }: PageProps<"/tickets"
         include: ticketInclude,
         orderBy: buildOrderBy(sortBy, sortDir),
         skip,
-        take: PAGE_SIZE,
+        take: pageSize,
       }),
       prisma.ticket.count({ where }),
     ]);
@@ -108,7 +115,7 @@ export default async function TicketsPage({ searchParams }: PageProps<"/tickets"
     const [idRows, count] = await Promise.all([
       prisma.$queryRaw<{ id: string }[]>(Prisma.sql`
         SELECT id FROM "Ticket"
-        WHERE 1=1 ${ownerFragment} ${searchFragment} ${statusFragment}
+        WHERE "deletedAt" IS NULL ${ownerFragment} ${searchFragment} ${statusFragment}
         ORDER BY CASE status
           WHEN 'NEW' THEN 0
           WHEN 'REOPENED' THEN 1
@@ -118,7 +125,7 @@ export default async function TicketsPage({ searchParams }: PageProps<"/tickets"
           WHEN 'CLOSED' THEN 5
         END,
         "transactionDate" DESC
-        LIMIT ${PAGE_SIZE} OFFSET ${skip}
+        LIMIT ${pageSize} OFFSET ${skip}
       `),
       prisma.ticket.count({ where }),
     ]);
@@ -130,14 +137,18 @@ export default async function TicketsPage({ searchParams }: PageProps<"/tickets"
     tickets = orderedIds.map((id) => ticketsById.get(id)).filter((t): t is NonNullable<typeof t> => Boolean(t));
   }
 
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const linkQuery = { ...(query ? { q: query } : {}), ...(statusFilters.length > 0 ? { status: statusFilters } : {}) };
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const linkQuery = {
+    ...(query ? { q: query } : {}),
+    ...(statusFilters.length > 0 ? { status: statusFilters } : {}),
+    pageSize: String(pageSize),
+  };
 
   // Summary cards reflect the caller's own scope (own tickets, or every
   // ticket for an admin) but — like the search/status filters below the
   // cards — aren't themselves affected by the search/status filters, so
   // they stay a stable "at a glance" overview of the whole list.
-  const scopeWhere: Prisma.TicketWhereInput = isAdmin ? {} : { createdById: session.user.id };
+  const scopeWhere: Prisma.TicketWhereInput = { deletedAt: null, ...(isAdmin ? {} : { createdById: session.user.id }) };
   const statusGroups = await prisma.ticket.groupBy({ by: ["status"], where: scopeWhere, _count: { _all: true } });
   const statusCounts = Object.fromEntries(statusGroups.map((g) => [g.status, g._count._all])) as Partial<
     Record<TicketStatus, number>
@@ -254,7 +265,9 @@ export default async function TicketsPage({ searchParams }: PageProps<"/tickets"
                       </thead>
                       <tbody>
                         {tickets.map((ticket) => {
-                          const canEditDelete = ticket.status === "NEW" && (isAdmin || ticket.createdById === session.user.id);
+                          const isOwnerOrAdmin = isAdmin || ticket.createdById === session.user.id;
+                          const canEdit = ticket.status === "NEW" && isOwnerOrAdmin;
+                          const canDelete = isOwnerOrAdmin;
                           return (
                           <tr key={ticket.id}>
                             <td className="fw-medium">{ticket.ticketNumber}</td>
@@ -281,22 +294,29 @@ export default async function TicketsPage({ searchParams }: PageProps<"/tickets"
                                 >
                                   <i className="bi bi-eye" aria-hidden="true"></i>
                                 </Link>
-                                {canEditDelete && (
-                                  <>
-                                    <Link
-                                      href={`/tickets/${ticket.id}/edit`}
-                                      className="btn btn-outline-secondary"
-                                      title="Edit"
-                                      aria-label={`Edit ${ticket.ticketNumber}`}
-                                    >
-                                      <i className="bi bi-pencil" aria-hidden="true"></i>
-                                    </Link>
-                                    <DeleteButton
-                                      action={deleteTicket.bind(null, ticket.id)}
-                                      confirmMessage={`Delete ticket "${ticket.ticketNumber}"? This cannot be undone.`}
-                                      label={`Delete ${ticket.ticketNumber}`}
-                                    />
-                                  </>
+                                {canEdit && (
+                                  <Link
+                                    href={`/tickets/${ticket.id}/edit`}
+                                    className="btn btn-outline-secondary"
+                                    title="Edit"
+                                    aria-label={`Edit ${ticket.ticketNumber}`}
+                                  >
+                                    <i className="bi bi-pencil" aria-hidden="true"></i>
+                                  </Link>
+                                )}
+                                <TicketTimelineButton
+                                  ticketNumber={ticket.ticketNumber}
+                                  entries={ticket.TicketHistory.map((h) => ({
+                                    id: h.id,
+                                    action: h.action,
+                                    previousState: h.previousState,
+                                    newState: h.newState,
+                                    timestamp: h.timestamp,
+                                    actorName: h.User?.name ?? null,
+                                  }))}
+                                />
+                                {canDelete && (
+                                  <DeleteTicketButton ticketId={ticket.id} ticketNumber={ticket.ticketNumber} />
                                 )}
                               </div>
                             </td>
@@ -314,14 +334,18 @@ export default async function TicketsPage({ searchParams }: PageProps<"/tickets"
                     </table>
                   </div>
                 </div>
-                <div className="card-footer clearfix">
-                  <div className="float-start pt-1 fs-7 text-body-secondary">
-                    Showing {tickets.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1} to{" "}
-                    {(currentPage - 1) * PAGE_SIZE + tickets.length} of {total} tickets
+                <div className="card-footer d-flex flex-wrap justify-content-between align-items-center gap-2">
+                  <div className="d-flex flex-wrap align-items-center gap-3">
+                    <div className="fs-7 text-body-secondary">
+                      Showing {tickets.length === 0 ? 0 : (currentPage - 1) * pageSize + 1} to{" "}
+                      {(currentPage - 1) * pageSize + tickets.length} of {total} tickets
+                    </div>
+                    <PageSizeSelect pageSize={pageSize} />
                   </div>
                   <Pagination
                     currentPage={currentPage}
                     totalPages={totalPages}
+                    className="pagination pagination-sm m-0"
                     makeHref={(p) => ({
                       pathname: "/tickets",
                       query: { ...linkQuery, ...(isSorted ? { sort: sortBy, dir: sortDir } : {}), page: p },

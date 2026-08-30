@@ -3,22 +3,24 @@
 import { useActionState, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
-import { updateDepartmentSupervisor, type UpdateDepartmentSupervisorState } from "@/app/actions/companies";
+import { updateDepartment, type UpdateDepartmentState } from "@/app/actions/companies";
 import { Select2Select } from "../../_components/select2-select";
 import { FormVendorScripts } from "../../_components/form-vendor-scripts";
 import { useMounted } from "../../_components/use-mounted";
 
 type Option = { value: string; label: string };
 
-export function EditDepartmentSupervisorButton({
+export function EditDepartmentButton({
   departmentId,
   departmentName,
-  currentSupervisorId,
+  currentCode,
+  currentApproverIds,
   supervisors,
 }: {
   departmentId: string;
   departmentName: string;
-  currentSupervisorId: string | null;
+  currentCode: string | null;
+  currentApproverIds: string[];
   supervisors: Option[];
 }) {
   const [open, setOpen] = useState(false);
@@ -28,17 +30,18 @@ export function EditDepartmentSupervisorButton({
       <button
         type="button"
         className="btn btn-sm btn-outline-secondary"
-        title="Edit supervisor"
-        aria-label={`Edit supervisor for ${departmentName}`}
+        title="Edit department"
+        aria-label={`Edit ${departmentName}`}
         onClick={() => setOpen(true)}
       >
         <i className="bi bi-pencil" aria-hidden="true"></i>
       </button>
       {open && (
-        <EditDepartmentSupervisorModal
+        <EditDepartmentModal
           departmentId={departmentId}
           departmentName={departmentName}
-          currentSupervisorId={currentSupervisorId}
+          currentCode={currentCode}
+          currentApproverIds={currentApproverIds}
           supervisors={supervisors}
           onClose={() => setOpen(false)}
         />
@@ -47,22 +50,24 @@ export function EditDepartmentSupervisorButton({
   );
 }
 
-function EditDepartmentSupervisorModal({
+function EditDepartmentModal({
   departmentId,
   departmentName,
-  currentSupervisorId,
+  currentCode,
+  currentApproverIds,
   supervisors,
   onClose,
 }: {
   departmentId: string;
   departmentName: string;
-  currentSupervisorId: string | null;
+  currentCode: string | null;
+  currentApproverIds: string[];
   supervisors: Option[];
   onClose: () => void;
 }) {
   const router = useRouter();
-  const action = updateDepartmentSupervisor.bind(null, departmentId);
-  const [state, formAction, pending] = useActionState<UpdateDepartmentSupervisorState, FormData>(action, undefined);
+  const action = updateDepartment.bind(null, departmentId);
+  const [state, formAction, pending] = useActionState<UpdateDepartmentState, FormData>(action, undefined);
   // Portaled to <body> rather than rendered in place — this button lives
   // inside the Edit Company page's own <form>, and a nested <form> in the
   // DOM makes React unable to tell which form owns a submit ("A React form
@@ -92,20 +97,38 @@ function EditDepartmentSupervisorModal({
           <div className="modal-content">
             <form action={formAction}>
               <div className="modal-header">
-                <h5 className="modal-title">Supervisor — {departmentName}</h5>
+                <h5 className="modal-title">Edit Department — {departmentName}</h5>
                 <button type="button" className="btn-close" aria-label="Close" onClick={onClose}></button>
               </div>
               <div className="modal-body">
-                <label htmlFor="supervisorId" className="form-label">
-                  Supervisor
-                </label>
-                <Select2Select
-                  name="supervisorId"
-                  defaultValue={currentSupervisorId ?? undefined}
-                  placeholder="No supervisor"
-                  options={supervisors}
-                />
-                {state?.error && <div className="text-danger small mt-2">{state.error}</div>}
+                <div className="mb-3">
+                  <label htmlFor="code" className="form-label">
+                    Department code
+                  </label>
+                  <input
+                    type="text"
+                    id="code"
+                    name="code"
+                    className="form-control"
+                    defaultValue={currentCode ?? ""}
+                  />
+                  {state?.errors?.code && <div className="text-danger small mt-1">{state.errors.code[0]}</div>}
+                </div>
+                <div>
+                  <label htmlFor="approverIds" className="form-label">
+                    Approvers
+                  </label>
+                  <Select2Select
+                    name="approverIds"
+                    multiple
+                    defaultValues={currentApproverIds}
+                    placeholder="No approvers"
+                    options={supervisors}
+                  />
+                  {state?.errors?.approverIds && (
+                    <div className="text-danger small mt-1">{state.errors.approverIds[0]}</div>
+                  )}
+                </div>
               </div>
               <div className="modal-footer">
                 <button type="button" className="btn btn-secondary" onClick={onClose} disabled={pending}>

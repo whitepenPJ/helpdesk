@@ -5,18 +5,20 @@ declare global {
   var prismaClient: PrismaClient | undefined;
 }
 
-// This pool's `max` is never the only one open against the DB — in Next.js
-// dev, separate worker realms each get their own copy of this module's
-// `global` singleton; in production on Vercel, concurrent serverless
-// function instances each get their own module instance (and thus their own
-// pool) too. Supabase's session-mode pooler caps total client connections at
-// 15 (see pool_size in the Supabase dashboard), so keep each instance's
-// footprint small enough that several of them together can't exceed it
-// (EMAXCONNSESSION otherwise).
+// DATABASE_URL now points at Supabase's *transaction-mode* pooler (port
+// 6543, PgBouncer-style) rather than session mode (port 5432, still used
+// for migrations via DIRECT_URL — see prisma.config.ts). Session mode caps
+// total client connections at a fixed, small number (15 here) — fine for a
+// handful of long-lived servers, but concurrent Vercel function instances
+// each opening their own pool blew past that repeatedly (EMAXCONNSESSION).
+// Transaction mode multiplexes many short-lived client connections onto a
+// much smaller set of real Postgres backend connections, which is what
+// serverless horizontal scale-out actually needs — so `max` here just
+// bounds one instance's own concurrency, not a shared budget.
 const adapter = new PrismaPg({
   connectionString: process.env.DATABASE_URL,
-  max: 2,
-  idleTimeoutMillis: 5_000,
+  max: 10,
+  idleTimeoutMillis: 10_000,
 });
 
 export const prisma = global.prismaClient ?? new PrismaClient({ adapter });

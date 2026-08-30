@@ -48,6 +48,7 @@ export type ReportData = {
 
 function buildWhere(filters: ReportFilters): Prisma.TicketWhereInput {
   return {
+    deletedAt: null,
     ...(filters.categoryIds.length ? { categoryId: { in: filters.categoryIds } } : {}),
     ...(filters.statuses.length ? { status: { in: filters.statuses } } : {}),
     ...(filters.companyId ? { companyId: filters.companyId } : {}),
