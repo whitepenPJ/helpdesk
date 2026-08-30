@@ -15,8 +15,8 @@ declare global {
 // (EMAXCONNSESSION otherwise).
 const adapter = new PrismaPg({
   connectionString: process.env.DATABASE_URL,
-  max: 4,
-  idleTimeoutMillis: 10_000,
+  max: 2,
+  idleTimeoutMillis: 5_000,
 });
 
 export const prisma = global.prismaClient ?? new PrismaClient({ adapter });
