@@ -36,6 +36,7 @@ model User {
   CategoryAdmin                            CategoryAdmin[]
   Department_Department_supervisorIdToUser Department?        @relation("Department_supervisorIdToUser")
   LessonLearned                            LessonLearned[]
+  Notification                             Notification[]
   PushSubscription                         PushSubscription[]
   Ticket_Ticket_createdByIdToUser          Ticket[]           @relation("Ticket_createdByIdToUser")
   TicketApproval                           TicketApproval[]
@@ -196,6 +197,29 @@ model LessonLearned {
   @@index([isActive])
 }
 
+// One row per (recipient, lifecycle event) — drives the header bell/badge
+// and the full /notifications page. Deliberately separate from
+// TicketHistory (the ticket detail page's audit-trail Timeline tab): that
+// table is a single append-only log per ticket event with one actor and one
+// action string, which can't express "this event reads differently per
+// recipient" (e.g. an assignment reads "assigned to you" for the assignee
+// but "is assigned" for the ticket's owner). `message`/`href` are computed
+// and frozen at creation time by the notify() helper in app/lib/notifications.ts
+// — nothing re-derives them at read time.
+model Notification {
+  id        String   @id
+  userId    String
+  ticketId  String
+  message   String
+  href      String
+  createdAt DateTime @default(now())
+  User      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  Ticket    Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([ticketId])
+}
+
 model PushSubscription {
   id        String   @id
   userId    String
@@ -247,6 +271,7 @@ model Ticket {
   Company                       Company               @relation(fields: [companyId], references: [id])
   User_Ticket_createdByIdToUser User                  @relation("Ticket_createdByIdToUser", fields: [createdById], references: [id])
   Department                    Department            @relation(fields: [departmentId], references: [id])
+  Notification                  Notification[]
   TicketApproval                TicketApproval?
   TicketAssignee                TicketAssignee[]
   TicketAssignedGroup           TicketAssignedGroup[]

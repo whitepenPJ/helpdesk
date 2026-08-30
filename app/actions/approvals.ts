@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/app/lib/db";
 import { requireUser } from "@/app/lib/dal";
-import { notifyTicketApproved } from "@/app/lib/notifications";
+import { notifyTicketApproved, notifyTicketRejected } from "@/app/lib/notifications";
 
 export type DecideApprovalState = { error?: string; success?: boolean } | undefined;
 
@@ -81,6 +81,10 @@ export async function decideTicketApproval(
   if (decision === "APPROVED") {
     await notifyTicketApproved(approval.ticketId, supervisorName).catch((error) =>
       console.error("decideTicketApproval: notifyTicketApproved failed", error)
+    );
+  } else {
+    await notifyTicketRejected(approval.ticketId, supervisorName, reason).catch((error) =>
+      console.error("decideTicketApproval: notifyTicketRejected failed", error)
     );
   }
 

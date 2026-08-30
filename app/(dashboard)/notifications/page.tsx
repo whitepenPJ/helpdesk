@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { requireUser } from "@/app/lib/dal";
-import { getTicketActivityPage, getTicketActivityHref } from "@/app/lib/notifications";
+import { getTicketActivityPage } from "@/app/lib/notifications";
 import { formatDateTime } from "@/app/lib/date-format";
 import { Pagination } from "../_components/pagination";
 
@@ -15,7 +15,7 @@ export default async function NotificationsPage({ searchParams }: PageProps<"/no
   const { page } = await searchParams;
   const currentPage = Math.max(1, Number(page) || 1);
 
-  const { items, total } = await getTicketActivityPage(session.user.id, session.user.role, {
+  const { items, total } = await getTicketActivityPage(session.user.id, {
     skip: (currentPage - 1) * PAGE_SIZE,
     take: PAGE_SIZE,
   });
@@ -58,19 +58,10 @@ export default async function NotificationsPage({ searchParams }: PageProps<"/no
                     <ul className="list-group list-group-flush">
                       {items.map((item) => (
                         <li key={item.id} className="list-group-item">
-                          <Link
-                            href={getTicketActivityHref(item, session.user.role)}
-                            className="d-flex justify-content-between gap-3"
-                          >
+                          <Link href={item.href} className="d-flex justify-content-between gap-3">
                             <span>
                               <i className="bi bi-ticket-perforated me-2" aria-hidden="true"></i>
-                              <span className="fw-medium">{item.ticketNumber}</span> {item.action}
-                              {item.previousState && item.newState && (
-                                <span className="text-secondary">
-                                  {" "}
-                                  ({item.previousState} → {item.newState})
-                                </span>
-                              )}
+                              {item.message}
                             </span>
                             <span className="text-secondary fs-7 text-nowrap">{formatDateTime(item.timestamp)}</span>
                           </Link>

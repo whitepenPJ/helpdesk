@@ -9,9 +9,11 @@ import { Prisma, type TicketStatus, type Priority } from "@/app/generated/prisma
 import { STATUSES, PRIORITIES } from "@/app/(dashboard)/tickets/ticket-badges";
 import {
   notifyTicketAssigned,
+  notifyOwnerTicketAssigned,
   notifyTicketCreated,
   notifyApprovalRequested,
   notifyTicketResolved,
+  notifyTicketClosed,
 } from "@/app/lib/notifications";
 import { formatAssignment } from "@/app/lib/ticket-format";
 import { saveAttachments } from "@/app/lib/attachments";
@@ -237,19 +239,15 @@ export async function createTicket(_prevState: TicketFormState, formData: FormDa
     }
   }
 
-  // Auto-assigned tickets notify the assignees directly rather than also
-  // notifying the category's admins to triage — when auto-assigned, those
-  // are typically the same people (the category's own responsible
-  // users/groups), so sending both would double-notify them about one
-  // ticket. Matches how a human admin manually assigning a ticket already
-  // fires only notifyTicketAssigned, not notifyTicketCreated too.
+  // Admins are always notified a ticket was created; an auto-assigned
+  // ticket's assignee(s) additionally get their own "assigned to you"
+  // notification — both fire together (not either/or).
+  await notifyTicketCreated(ticketId).catch((error) => console.error("createTicket: notifyTicketCreated failed", error));
   if (shouldAutoAssign) {
     await notifyTicketAssigned(ticketId, {
       assigneeIds: categoryAdmins.map((a) => a.adminId),
       assignedGroupIds: categoryGroups.map((g) => g.userGroupId),
     }).catch((error) => console.error("createTicket: notifyTicketAssigned failed", error));
-  } else {
-    await notifyTicketCreated(ticketId).catch((error) => console.error("createTicket: notifyTicketCreated failed", error));
   }
 
   revalidatePath("/tickets");
@@ -572,6 +570,9 @@ export async function updateTicket(ticketId: string, formData: FormData): Promis
       assigneeIds: resolvedAssigneeIds,
       assignedGroupIds: resolvedGroupIds,
     }).catch((error) => console.error("updateTicket: notifyTicketAssigned failed", error));
+    await notifyOwnerTicketAssigned(ticketId, before.createdById).catch((error) =>
+      console.error("updateTicket: notifyOwnerTicketAssigned failed", error)
+    );
   }
 
   revalidatePath("/transaction/ticket-management");
@@ -776,6 +777,9 @@ export async function closeTicket(
   revalidatePath(`/transaction/ticket-management/${ticketId}`);
   revalidatePath("/tickets");
   revalidatePath("/tickets/assigned");
+
+  await notifyTicketClosed(ticketId).catch((error) => console.error("closeTicket: notifyTicketClosed failed", error));
+
   return { success: true };
 }
 

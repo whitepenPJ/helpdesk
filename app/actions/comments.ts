@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/app/lib/db";
 import { requireUser } from "@/app/lib/dal";
 import { saveAttachments } from "@/app/lib/attachments";
+import { notifyCommentAdded } from "@/app/lib/notifications";
 
 export type CommentFormState =
   | {
@@ -75,5 +76,10 @@ export async function createComment(
   revalidatePath(`/tickets/${ticketId}`);
   revalidatePath(`/tickets/assigned/${ticketId}`);
   revalidatePath(`/transaction/ticket-management/${ticketId}`);
+
+  await notifyCommentAdded(ticketId, session.user.id).catch((error) =>
+    console.error("createComment: notifyCommentAdded failed", error)
+  );
+
   return { success: true };
 }
