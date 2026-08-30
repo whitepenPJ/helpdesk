@@ -7,10 +7,19 @@ import { CompanyForm } from "../../company-form";
 
 export const metadata: Metadata = { title: "Edit Company" };
 
-export default async function EditCompanyPage({ params }: PageProps<"/master/company/[id]/edit">) {
+const ERROR_MESSAGES: Record<string, string> = {
+  "department-in-use": "This department still has users assigned — remove them first.",
+};
+
+export default async function EditCompanyPage({
+  params,
+  searchParams,
+}: PageProps<"/master/company/[id]/edit">) {
   await requireAdmin();
 
   const { id } = await params;
+  const { error } = await searchParams;
+  const errorMessage = typeof error === "string" ? ERROR_MESSAGES[error] : undefined;
   const [company, departments, freeSupervisors, allSupervisors] = await Promise.all([
     prisma.company.findUnique({ where: { id } }),
     prisma.department.findMany({
@@ -68,6 +77,11 @@ export default async function EditCompanyPage({ params }: PageProps<"/master/com
 
       <div className="app-content">
         <div className="container-fluid">
+          {errorMessage && (
+            <div className="alert alert-danger" role="alert">
+              {errorMessage}
+            </div>
+          )}
           <div className="row">
             <div className="col-12">
               <CompanyForm

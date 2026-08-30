@@ -99,6 +99,7 @@ export function BootstrapFileInput({
         browseOnZoneClick: true,
         browseClass: "btn btn-outline-secondary",
         removeClass: "btn btn-outline-danger",
+        dropZoneEnabled: false,
       });
     }
     init();

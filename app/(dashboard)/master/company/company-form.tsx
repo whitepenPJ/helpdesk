@@ -2,9 +2,10 @@
 
 import { useActionState } from "react";
 import Link from "next/link";
-import { createCompany, updateCompany, type CompanyFormState } from "@/app/actions/companies";
+import { createCompany, updateCompany, deleteDepartment, type CompanyFormState } from "@/app/actions/companies";
 import { AddDepartmentButton } from "./add-department-button";
 import { EditDepartmentSupervisorButton } from "./edit-department-supervisor-button";
+import { DeleteButton } from "../../_components/delete-button";
 
 type Option = { value: string; label: string };
 
@@ -112,12 +113,19 @@ export function CompanyForm({
                         <td>{department.supervisorName ?? <span className="text-secondary">—</span>}</td>
                         {!isView && (
                           <td className="text-end">
-                            <EditDepartmentSupervisorButton
-                              departmentId={department.id}
-                              departmentName={department.name}
-                              currentSupervisorId={department.supervisorId ?? null}
-                              supervisors={department.availableSupervisors ?? []}
-                            />
+                            <div className="btn-group btn-group-sm">
+                              <EditDepartmentSupervisorButton
+                                departmentId={department.id}
+                                departmentName={department.name}
+                                currentSupervisorId={department.supervisorId ?? null}
+                                supervisors={department.availableSupervisors ?? []}
+                              />
+                              <DeleteButton
+                                action={deleteDepartment.bind(null, department.id)}
+                                confirmMessage={`Delete department "${department.name}"? This cannot be undone.`}
+                                label={`Delete ${department.name}`}
+                              />
+                            </div>
                           </td>
                         )}
                       </tr>
@@ -148,8 +156,8 @@ export function CompanyForm({
                 {pending ? "Saving…" : mode === "create" ? "Create company" : "Save changes"}
               </button>
               <Link href="/master/company" className="btn btn-secondary">
-                <i className="bi bi-x-lg me-1" aria-hidden="true"></i>
-                Cancel
+                <i className="bi bi-arrow-left me-1" aria-hidden="true"></i>
+                Back
               </Link>
             </>
           )}

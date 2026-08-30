@@ -45,10 +45,12 @@ export function AddCommentForm({ ticketId }: { ticketId: string }) {
       </label>
       <BootstrapFileInput name="attachments" id="comment-attachments" />
 
-      <button className="btn btn-primary btn-sm mt-2" type="submit" disabled={pending}>
-        <i className="bi bi-send me-1" aria-hidden="true"></i>
-        {pending ? "Posting…" : "Post comment"}
-      </button>
+      <div className="d-grid">
+        <button className="btn btn-primary btn-sm mt-2 btn-block" type="submit" disabled={pending}>
+          <i className="bi bi-send me-1" aria-hidden="true"></i>
+          {pending ? "Posting…" : "Post comment"}
+        </button>
+      </div>
     </form>
   );
 }

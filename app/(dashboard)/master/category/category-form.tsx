@@ -213,8 +213,8 @@ export function CategoryForm({
                 {pending ? "Saving…" : mode === "create" ? "Create category" : "Save changes"}
               </button>
               <Link href="/master/category" className="btn btn-secondary">
-                <i className="bi bi-x-lg me-1" aria-hidden="true"></i>
-                Cancel
+                <i className="bi bi-arrow-left me-1" aria-hidden="true"></i>
+                Back
               </Link>
             </>
           )}

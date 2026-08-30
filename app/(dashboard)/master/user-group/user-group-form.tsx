@@ -151,8 +151,8 @@ export function UserGroupForm({
                 {pending ? "Saving…" : mode === "create" ? "Create group" : "Save changes"}
               </button>
               <Link href="/master/user-group" className="btn btn-secondary">
-                <i className="bi bi-x-lg me-1" aria-hidden="true"></i>
-                Cancel
+                <i className="bi bi-arrow-left me-1" aria-hidden="true"></i>
+                Back
               </Link>
             </>
           )}

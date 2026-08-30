@@ -185,3 +185,19 @@ export async function updateDepartmentSupervisor(
   revalidatePath(`/master/company/${department.companyId}/edit`);
   return { success: true };
 }
+
+export async function deleteDepartment(departmentId: string) {
+  await requireAdmin();
+
+  const department = await prisma.department.findUnique({ where: { id: departmentId } });
+  if (!department) return;
+
+  const userCount = await prisma.user.count({ where: { departmentId } });
+  if (userCount > 0) {
+    redirect(`/master/company/${department.companyId}/edit?error=department-in-use`);
+  }
+
+  await prisma.department.delete({ where: { id: departmentId } });
+  revalidatePath(`/master/company/${department.companyId}/edit`);
+  redirect(`/master/company/${department.companyId}/edit`);
+}

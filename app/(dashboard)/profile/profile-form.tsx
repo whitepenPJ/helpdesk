@@ -4,6 +4,7 @@ import { useActionState, useState } from "react";
 import { updateProfile, type ProfileFormState, type ProfileFormValues } from "@/app/actions/profile";
 import { Select2Select } from "../_components/select2-select";
 import { FormVendorScripts } from "../_components/form-vendor-scripts";
+import { ChangePasswordButton } from "./change-password-modal";
 
 type Option = { value: string; label: string };
 
@@ -15,12 +16,14 @@ function FieldError({ messages }: { messages?: string[] }) {
 export function ProfileForm({
   email,
   role,
+  hasPassword,
   companies,
   departments,
   initialValues,
 }: {
   email: string;
   role: string;
+  hasPassword: boolean;
   companies: Option[];
   departments: (Option & { companyId: string })[];
   initialValues: ProfileFormValues;
@@ -118,11 +121,12 @@ export function ProfileForm({
             </div>
           </div>
         </div>
-        <div className="card-footer">
+        <div className="card-footer d-flex gap-2">
           <button className="btn btn-primary" type="submit" disabled={pending}>
             <i className="bi bi-check2 me-1" aria-hidden="true"></i>
             {pending ? "Saving…" : "Save changes"}
           </button>
+          <ChangePasswordButton hasPassword={hasPassword} />
         </div>
       </form>
     </div>

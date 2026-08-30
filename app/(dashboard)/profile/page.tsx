@@ -66,6 +66,7 @@ export default async function ProfilePage() {
               <ProfileForm
                 email={user.email}
                 role={user.role}
+                hasPassword={Boolean(user.passwordHash)}
                 companies={companies.map((c) => ({ value: c.id, label: c.name }))}
                 departments={departments.map((d) => ({ value: d.id, label: d.name, companyId: d.companyId }))}
                 initialValues={{
