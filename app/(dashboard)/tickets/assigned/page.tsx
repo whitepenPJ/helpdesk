@@ -243,7 +243,7 @@ export default async function AssignedTicketsPage({ searchParams }: PageProps<"/
                                 </Link>
                                 {ticket.status !== "CLOSED" && (
                                   <Link
-                                    href={`/tickets/assigned/${ticket.id}`}
+                                    href={`/tickets/assigned/${ticket.id}?edit=1`}
                                     className="btn btn-sm btn-outline-secondary"
                                     title="Edit"
                                     aria-label={`Edit ${ticket.ticketNumber}`}

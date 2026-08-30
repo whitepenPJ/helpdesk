@@ -77,19 +77,38 @@ export async function TicketDetailContent({
   back,
   defaultBackHref,
   defaultBackLabel,
+  showConvertToLessonLearned = false,
+  assigneeActionsGate = false,
 }: {
   id: string;
   edit?: string;
   back?: string;
   defaultBackHref: string;
   defaultBackLabel: string;
+  /** Ticket Management's own workflow step, not the assignee's or the plain
+   * ticket view's — see remaining_me.md's own framing ("Ticket Management →
+   * Add function to convert ticket into Lesson Learned"). Everywhere else
+   * (Assigned Ticket, Approval Ticket, the plain ticket view) is meant to
+   * stay a pure view/action page for that role, not also carry an admin
+   * knowledge-base action that only applies from the admin's own list. */
+  showConvertToLessonLearned?: boolean;
+  /** Assigned Ticket's own View/Edit split — the list's View icon links here
+   * with no `edit` param (footer collapses to just Back), its Edit icon adds
+   * `?edit=1` (footer shows Request Approve / Mark Resolved / Cancel
+   * Assignment). Everywhere else these buttons show under their existing
+   * status/relationship rules regardless of `edit`. */
+  assigneeActionsGate?: boolean;
 }) {
   const session = await requireUser();
   const isAdmin = session.user.role === "ADMIN";
 
-  // Retained for legacy notification links, but the assign modal is now
-  // opened explicitly from the button instead of appearing immediately.
-  void edit;
+  const isEditMode = edit === "1";
+  // On every other route this is always true (unchanged behavior); only the
+  // Assigned Ticket route's View mode turns it off.
+  const showAssigneeActions = !assigneeActionsGate || isEditMode;
+  // Only the Assigned Ticket route sends the assignee back to its own table
+  // on success — everywhere else these actions just refresh in place.
+  const assigneeActionsRedirect = assigneeActionsGate ? "/tickets/assigned" : undefined;
   // Only ever a same-origin path — never trust the query string as a raw
   // redirect target.
   const backHref = back && back.startsWith("/") ? back : defaultBackHref;
@@ -111,6 +130,8 @@ export async function TicketDetailContent({
   }
 
   const isOwner = ticket.createdById === session.user.id;
+  // Same gating as the Tickets list row's own Edit button (../page.tsx).
+  const canEdit = ticket.status === "NEW" && (isAdmin || isOwner);
 
   // Non-admins can view tickets they filed, are individually assigned, are
   // assigned to their group, or are the reviewing supervisor for.
@@ -485,6 +506,7 @@ export async function TicketDetailContent({
                   )}
                   {(isAdmin || isAssignee) &&
                     ticket.status !== "CLOSED" &&
+                    showAssigneeActions &&
                     (ticket.status === "WAITING" ? (
                       <span className="text-secondary fs-7">Awaiting supervisor approval</span>
                     ) : (
@@ -492,12 +514,13 @@ export async function TicketDetailContent({
                         ticketId={ticket.id}
                         companyId={ticket.companyId}
                         supervisor={ticket.Department.User_Department_supervisorIdToUser}
+                        redirectOnSuccessTo={assigneeActionsRedirect}
                       />
                     ))}
-                  {isAssignee && ticket.status === "ASSIGNED" && (
+                  {isAssignee && ticket.status === "ASSIGNED" && showAssigneeActions && (
                     <>
-                      <MarkResolvedButton ticketId={ticket.id} />
-                      <CancelAssignmentButton ticketId={ticket.id} />
+                      <MarkResolvedButton ticketId={ticket.id} redirectOnSuccessTo={assigneeActionsRedirect} />
+                      <CancelAssignmentButton ticketId={ticket.id} redirectOnSuccessTo={assigneeActionsRedirect} />
                     </>
                   )}
                   {isSupervisor && approval?.status === "PENDING" && (
@@ -518,10 +541,16 @@ export async function TicketDetailContent({
                       }}
                     />
                   )}
-                  {isAdmin && (
+                  {isAdmin && showConvertToLessonLearned && (
                     <Link href={`/master/lesson-learned/new?ticketId=${ticket.id}`} className="btn btn-outline-primary">
                       <i className="bi bi-journal-plus me-1" aria-hidden="true"></i>
                       Convert to Lesson Learned
+                    </Link>
+                  )}
+                  {canEdit && (
+                    <Link href={`/tickets/${ticket.id}/edit`} className="btn btn-outline-secondary">
+                      <i className="bi bi-pencil me-1" aria-hidden="true"></i>
+                      Edit
                     </Link>
                   )}
                   <Link href={backHref} className="btn btn-secondary">

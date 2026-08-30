@@ -14,6 +14,7 @@ export default async function AssignedTicketDetailPage({ params, searchParams }:
       back={typeof back === "string" ? back : undefined}
       defaultBackHref="/tickets/assigned"
       defaultBackLabel="Assigned Ticket"
+      assigneeActionsGate
     />
   );
 }

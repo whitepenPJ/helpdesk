@@ -21,21 +21,44 @@ declare global {
 // whoever reassigns it next). Same manual-FormData-inside-a-transition
 // pattern as MarkResolvedButton, needed because of the async SweetAlert
 // confirm gate before the server action fires.
-export function CancelAssignmentButton({ ticketId }: { ticketId: string }) {
+export function CancelAssignmentButton({
+  ticketId,
+  redirectOnSuccessTo,
+}: {
+  ticketId: string;
+  /** When set, success shows an OK-button confirmation instead of the
+   * default auto-dismissing toast, and OK navigates here (the Assigned
+   * Ticket table, for the assignee's own cancel flow). */
+  redirectOnSuccessTo?: string;
+}) {
   const [open, setOpen] = useState(false);
 
   return (
     <>
-      <button type="button" className="btn btn-outline-danger" onClick={() => setOpen(true)}>
+      <button type="button" className="btn btn-danger" onClick={() => setOpen(true)}>
         <i className="bi bi-x-octagon me-1" aria-hidden="true"></i>
         Cancel Assignment
       </button>
-      {open && <CancelAssignmentModal ticketId={ticketId} onClose={() => setOpen(false)} />}
+      {open && (
+        <CancelAssignmentModal
+          ticketId={ticketId}
+          onClose={() => setOpen(false)}
+          redirectOnSuccessTo={redirectOnSuccessTo}
+        />
+      )}
     </>
   );
 }
 
-function CancelAssignmentModal({ ticketId, onClose }: { ticketId: string; onClose: () => void }) {
+function CancelAssignmentModal({
+  ticketId,
+  onClose,
+  redirectOnSuccessTo,
+}: {
+  ticketId: string;
+  onClose: () => void;
+  redirectOnSuccessTo?: string;
+}) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [reason, setReason] = useState("");
@@ -69,6 +92,12 @@ function CancelAssignmentModal({ ticketId, onClose }: { ticketId: string; onClos
         setError(result.error);
         return;
       }
+      onClose();
+      if (redirectOnSuccessTo) {
+        await window.Swal?.fire({ title: "Done", text: "Assignment cancelled.", icon: "success" });
+        router.push(redirectOnSuccessTo);
+        return;
+      }
       router.refresh();
       await window.Swal?.fire({
         title: "Done",
@@ -77,7 +106,6 @@ function CancelAssignmentModal({ ticketId, onClose }: { ticketId: string; onClos
         timer: 1500,
         showConfirmButton: false,
       });
-      onClose();
     });
   }
 

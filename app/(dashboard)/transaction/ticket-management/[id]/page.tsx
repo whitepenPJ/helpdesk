@@ -17,6 +17,7 @@ export default async function TicketManagementDetailPage({
       back={typeof back === "string" ? back : undefined}
       defaultBackHref="/transaction/ticket-management"
       defaultBackLabel="Ticket Management"
+      showConvertToLessonLearned
     />
   );
 }

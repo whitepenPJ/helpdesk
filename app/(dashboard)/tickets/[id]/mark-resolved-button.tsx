@@ -23,7 +23,16 @@ declare global {
 // plain `<form action={formAction}>` (which submits immediately) — it
 // manually builds FormData and calls the action inside a transition, same
 // pattern as assign-modal.tsx's submit().
-export function MarkResolvedButton({ ticketId }: { ticketId: string }) {
+export function MarkResolvedButton({
+  ticketId,
+  redirectOnSuccessTo,
+}: {
+  ticketId: string;
+  /** When set, success shows an OK-button confirmation instead of the
+   * default auto-dismissing toast, and OK navigates here (the Assigned
+   * Ticket table, for the assignee's own resolve flow). */
+  redirectOnSuccessTo?: string;
+}) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -32,12 +41,22 @@ export function MarkResolvedButton({ ticketId }: { ticketId: string }) {
         <i className="bi bi-check-circle-fill me-1" aria-hidden="true"></i>
         Mark Resolved
       </button>
-      {open && <MarkResolvedModal ticketId={ticketId} onClose={() => setOpen(false)} />}
+      {open && (
+        <MarkResolvedModal ticketId={ticketId} onClose={() => setOpen(false)} redirectOnSuccessTo={redirectOnSuccessTo} />
+      )}
     </>
   );
 }
 
-function MarkResolvedModal({ ticketId, onClose }: { ticketId: string; onClose: () => void }) {
+function MarkResolvedModal({
+  ticketId,
+  onClose,
+  redirectOnSuccessTo,
+}: {
+  ticketId: string;
+  onClose: () => void;
+  redirectOnSuccessTo?: string;
+}) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [problem, setProblem] = useState("");
@@ -73,6 +92,12 @@ function MarkResolvedModal({ ticketId, onClose }: { ticketId: string; onClose: (
         setError(result.error);
         return;
       }
+      onClose();
+      if (redirectOnSuccessTo) {
+        await window.Swal?.fire({ title: "Done", text: "Ticket marked as resolved.", icon: "success" });
+        router.push(redirectOnSuccessTo);
+        return;
+      }
       router.refresh();
       await window.Swal?.fire({
         title: "Done",
@@ -81,7 +106,6 @@ function MarkResolvedModal({ ticketId, onClose }: { ticketId: string; onClose: (
         timer: 1500,
         showConfirmButton: false,
       });
-      onClose();
     });
   }
 

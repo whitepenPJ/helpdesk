@@ -4,8 +4,20 @@ import { useActionState, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import Script from "next/script";
 import { requestTicketApproval, type RequestApprovalState } from "@/app/actions/tickets";
 import { useMounted } from "./use-mounted";
+
+// Loose shim — just the bits of SweetAlert2's API this component calls. Same
+// CDN-loaded, per-component pattern as MarkResolvedButton/DeleteButton;
+// next/script dedupes by src so this doesn't double-load it alongside those.
+declare global {
+  interface Window {
+    Swal?: {
+      fire: (options: Record<string, unknown>) => Promise<{ isConfirmed: boolean }>;
+    };
+  }
+}
 
 type Supervisor = { name: string; email: string } | null;
 
@@ -18,12 +30,17 @@ export function RequestApprovalButton({
   supervisor,
   disabled,
   variant = "button",
+  redirectOnSuccessTo,
 }: {
   ticketId: string;
   companyId: string;
   supervisor: Supervisor;
   disabled?: boolean;
   variant?: "button" | "dropdown-item";
+  /** When set, success shows an OK-button confirmation instead of just
+   * refreshing in place, and OK navigates here (the Assigned Ticket table,
+   * for the assignee's own request-approval flow). */
+  redirectOnSuccessTo?: string;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -51,6 +68,7 @@ export function RequestApprovalButton({
           companyId={companyId}
           supervisor={supervisor}
           onClose={() => setOpen(false)}
+          redirectOnSuccessTo={redirectOnSuccessTo}
         />
       )}
     </>
@@ -62,11 +80,13 @@ function RequestApprovalModal({
   companyId,
   supervisor,
   onClose,
+  redirectOnSuccessTo,
 }: {
   ticketId: string;
   companyId: string;
   supervisor: Supervisor;
   onClose: () => void;
+  redirectOnSuccessTo?: string;
 }) {
   const router = useRouter();
   const action = requestTicketApproval.bind(null, ticketId);
@@ -83,16 +103,22 @@ function RequestApprovalModal({
   }, []);
 
   useEffect(() => {
-    if (state?.success) {
-      router.refresh();
-      onClose();
+    if (!state?.success) return;
+    onClose();
+    if (redirectOnSuccessTo) {
+      window.Swal?.fire({ title: "Sent", text: "Approval request sent.", icon: "success" }).then(() => {
+        router.push(redirectOnSuccessTo);
+      });
+      return;
     }
-  }, [state, router, onClose]);
+    router.refresh();
+  }, [state, router, onClose, redirectOnSuccessTo]);
 
   if (!mounted) return null;
 
   return createPortal(
     <>
+      <Script src="https://cdn.jsdelivr.net/npm/sweetalert2@11" strategy="afterInteractive" />
       <div className="modal-backdrop fade show" onClick={onClose}></div>
       <div className="modal fade show" style={{ display: "block" }} tabIndex={-1} role="dialog" aria-modal="true">
         <div className="modal-dialog">
