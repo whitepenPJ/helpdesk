@@ -1,11 +1,12 @@
 import { auth } from "@/auth";
 import { prisma } from "@/app/lib/db";
 import { formatDateTime } from "@/app/lib/date-format";
-import type { Prisma, Role } from "@/app/generated/prisma/client";
+import type { Prisma } from "@/app/generated/prisma/client";
+import { Role } from "@/app/generated/prisma/enums";
 
 export async function GET(request: Request): Promise<Response> {
   const session = await auth();
-  if (!session?.user || session.user.role !== "ADMIN") {
+  if (!session?.user || session.user.role !== Role.ADMIN) {
     return new Response("Forbidden", { status: 403 });
   }
 

@@ -1,4 +1,4 @@
-import { STATUSES } from "@/app/(dashboard)/tickets/ticket-badges";
+import { STATUSES } from "@/app/(backend)/tickets/ticket-badges";
 import type { TicketStatus } from "@/app/generated/prisma/client";
 
 export type ReportFilters = {

@@ -1,4 +1,5 @@
 import { auth } from "@/auth";
+import { Role } from "@/app/generated/prisma/enums";
 import { getTicketReportData, type TicketReportRow } from "@/app/lib/ticket-report-data";
 import { parseDate } from "@/app/lib/report-filters";
 import { formatDateTime } from "@/app/lib/date-format";
@@ -117,7 +118,7 @@ function ticketsRowsCurated(tickets: TicketReportRow[]): (string | number)[][] {
 
 export async function GET(request: Request): Promise<Response> {
   const session = await auth();
-  if (!session?.user || session.user.role !== "ADMIN") {
+  if (!session?.user || session.user.role !== Role.ADMIN) {
     return new Response("Forbidden", { status: 403 });
   }
 

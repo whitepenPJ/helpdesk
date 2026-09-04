@@ -1,7 +1,8 @@
 import "server-only";
 import { prisma } from "@/app/lib/db";
 import { formatAssignment } from "@/app/lib/ticket-format";
-import { Prisma, type Priority, type Role, type TicketStatus } from "@/app/generated/prisma/client";
+import { Prisma, type Priority, type TicketStatus } from "@/app/generated/prisma/client";
+import { Role } from "@/app/generated/prisma/enums";
 
 export type SearchProgram = "Ticket" | "Assign Ticket" | "Approval Ticket" | "Ticket Management";
 
@@ -82,8 +83,8 @@ function matchWhere(query: string): Prisma.TicketWhereInput {
 // Users get Ticket + Assign Ticket, Supervisors add Approval Ticket, Admins
 // get all four (including the admin-only Ticket Management list).
 function programsForRole(role: Role): SearchProgram[] {
-  if (role === "ADMIN") return ["Ticket", "Assign Ticket", "Ticket Management", "Approval Ticket"];
-  if (role === "SUPERVISOR") return ["Ticket", "Assign Ticket", "Approval Ticket"];
+  if (role === Role.ADMIN) return ["Ticket", "Assign Ticket", "Ticket Management", "Approval Ticket"];
+  if (role === Role.SUPERVISOR) return ["Ticket", "Assign Ticket", "Approval Ticket"];
   return ["Ticket", "Assign Ticket"];
 }
 
@@ -95,7 +96,7 @@ export async function searchTickets(userId: string, role: Role, query: string): 
   const trimmed = query.trim();
   if (!trimmed) return [];
 
-  const isAdmin = role === "ADMIN";
+  const isAdmin = role === Role.ADMIN;
   const programs = programsForRole(role);
   const match = matchWhere(trimmed);
 

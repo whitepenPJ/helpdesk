@@ -3,11 +3,13 @@ import { randomUUID } from "node:crypto";
 import { headers } from "next/headers";
 import { after } from "next/server";
 import { prisma } from "@/app/lib/db";
+import { Role } from "@/app/generated/prisma/enums";
 import { sendEmail } from "@/app/lib/email";
 import { renderNewTicketEmail, renderTicketNotificationEmail, type TicketPriority } from "@/app/lib/email-templates";
 import { sendPushToUser } from "@/app/lib/push";
 import { sendTeamsNotification } from "@/app/lib/msteams";
 import { formatDateTime } from "@/app/lib/date-format";
+import { PUSH_NOTIFICATIONS_ENABLED, TEAMS_NOTIFICATIONS_ENABLED } from "@/app/lib/feature-flags";
 
 type Recipient = { id: string; email: string };
 
@@ -51,9 +53,11 @@ async function notify({
             console.error(`notify: email to ${email.to} failed`, error)
           )
         : Promise.resolve(),
-      sendPushToUser(userId, { title: "Helpdesk", body: message, url: href }).catch((error) =>
-        console.error(`notify: push to user ${userId} failed`, error)
-      ),
+      PUSH_NOTIFICATIONS_ENABLED
+        ? sendPushToUser(userId, { title: "Helpdesk", body: message, url: href }).catch((error) =>
+            console.error(`notify: push to user ${userId} failed`, error)
+          )
+        : Promise.resolve(),
     ])
   );
 }
@@ -102,13 +106,13 @@ async function getCategoryAdminRecipients(categoryId: string, excludeUserId?: st
   const excludeClause = excludeUserId ? { id: { not: excludeUserId } } : {};
 
   const categoryAdmins = await prisma.user.findMany({
-    where: { role: "ADMIN", status: "ACTIVE", ...excludeClause, CategoryAdmin: { some: { categoryId } } },
+    where: { role: Role.ADMIN, status: "ACTIVE", ...excludeClause, CategoryAdmin: { some: { categoryId } } },
     select: { id: true, email: true },
   });
   if (categoryAdmins.length > 0) return categoryAdmins;
 
   return prisma.user.findMany({
-    where: { role: "ADMIN", status: "ACTIVE", ...excludeClause },
+    where: { role: Role.ADMIN, status: "ACTIVE", ...excludeClause },
     select: { id: true, email: true },
   });
 }
@@ -191,11 +195,13 @@ export async function notifyTicketAssigned(ticketId: string, target: AssignmentT
   // webhook targets a shared channel, unlike email/push). Deferred like the
   // email/push above so this outbound HTTP call never adds to the caller's
   // response time.
-  after(() =>
-    sendTeamsNotification(`${emailPayload.subject}: ${message}`).catch((error) =>
-      console.error("notifyTicketAssigned: Teams notification failed", error)
-    )
-  );
+  if (TEAMS_NOTIFICATIONS_ENABLED) {
+    after(() =>
+      sendTeamsNotification(`${emailPayload.subject}: ${message}`).catch((error) =>
+        console.error("notifyTicketAssigned: Teams notification failed", error)
+      )
+    );
+  }
 }
 
 // Bell + push only (no email) to the ticket's owner when an admin manually

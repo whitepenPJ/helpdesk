@@ -1,4 +1,5 @@
 import { auth } from "@/auth";
+import { Role } from "@/app/generated/prisma/enums";
 import { getCategoryReportData } from "@/app/lib/category-report-data";
 import { parseDate } from "@/app/lib/report-filters";
 import { slaDaysLabel } from "@/app/lib/sla";
@@ -6,7 +7,7 @@ import { buildExcelWorkbook, buildPdfBuffer, type ExportDocument } from "@/app/l
 
 export async function GET(request: Request): Promise<Response> {
   const session = await auth();
-  if (!session?.user || session.user.role !== "ADMIN") {
+  if (!session?.user || session.user.role !== Role.ADMIN) {
     return new Response("Forbidden", { status: 403 });
   }
 

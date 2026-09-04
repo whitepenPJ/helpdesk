@@ -51,7 +51,6 @@ export async function decideTicketApproval(
   const supervisorName = decider.name;
   const now = new Date();
   const newStatus = decision === "REJECTED" ? "CLOSED" : (approval.Ticket.preApprovalStatus ?? "ASSIGNED");
-  const label = decision === "REJECTED" ? `Closed by ${supervisorName} (Approver)` : `Approved by ${supervisorName} (Approver)`;
 
   // Guards against two approvers deciding at once — the update only
   // succeeds if the request is still PENDING at the moment of the write; if
@@ -78,7 +77,11 @@ export async function decideTicketApproval(
         id: randomUUID(),
         ticketId: approval.ticketId,
         actorId: session.user.id,
-        action: reason ? `${label}: ${reason}` : label,
+        // Just the status transition — who decided is now shown via the
+        // normal actor-name prefix everywhere this history renders, and the
+        // reason/comment (if any) is still saved on the TicketApproval row
+        // itself (see the approval banner at the top of the ticket page).
+        action: decision === "REJECTED" ? "Approver Rejected" : "Approver Approved",
         previousState: "WAITING",
         newState: newStatus,
       },

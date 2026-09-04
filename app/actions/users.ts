@@ -6,7 +6,8 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/app/lib/db";
 import { requireAdmin } from "@/app/lib/dal";
-import type { Role, UserStatus } from "@/app/generated/prisma/client";
+import { Role } from "@/app/generated/prisma/enums";
+import type { UserStatus } from "@/app/generated/prisma/client";
 import type { Row } from "exceljs";
 
 export type UserFormValues = {
@@ -27,7 +28,7 @@ export type UserFormState =
   | undefined;
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const ROLES: Role[] = ["ADMIN", "SUPERVISOR", "USER"];
+const ROLES: Role[] = [Role.ADMIN, Role.SUPERVISOR, Role.USER];
 
 function readCommonFields(formData: FormData) {
   return {
@@ -294,7 +295,7 @@ export async function importUsers(_prevState: ImportUsersResult, formData: FormD
       errors.push({ row: rowNumber, message: `Unknown role "${roleRaw}" — row skipped.` });
       continue;
     }
-    const role: Role = (roleRaw as Role) || "USER";
+    const role: Role = (roleRaw as Role) || Role.USER;
 
     const statusRaw = cellValue(row, "status").toUpperCase();
     if (statusRaw && !STATUSES.includes(statusRaw as UserStatus)) {

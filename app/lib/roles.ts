@@ -1,4 +1,4 @@
-import type { Role } from "@/app/generated/prisma/client";
+import { Role } from "@/app/generated/prisma/enums";
 
 // Where each role lands after login / when it hits a route it doesn't have
 // (e.g. a non-admin visiting "/dashboard" directly). No "server-only" here —
@@ -6,11 +6,11 @@ import type { Role } from "@/app/generated/prisma/client";
 // need this, and it's a pure function with no DB/auth dependency.
 export function getHomePathForRole(role: Role): string {
   switch (role) {
-    case "ADMIN":
+    case Role.ADMIN:
       return "/dashboard";
-    case "SUPERVISOR":
+    case Role.SUPERVISOR:
       return "/tickets/approval";
-    case "USER":
+    case Role.USER:
     default:
       return "/tickets";
   }

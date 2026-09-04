@@ -2,7 +2,7 @@ import "server-only";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/app/lib/db";
-import type { Role } from "@/app/generated/prisma/client";
+import { Role } from "@/app/generated/prisma/enums";
 
 // Centralizes the "is this an admin" check so every Master page and Server
 // Action re-verifies it server-side — proxy.ts only confirms a session
@@ -13,7 +13,7 @@ export async function requireAdmin() {
   if (!session?.user) {
     redirect("/login");
   }
-  if (session.user.role !== "ADMIN") {
+  if (session.user.role !== Role.ADMIN) {
     redirect("/dashboard");
   }
   return session;
@@ -45,7 +45,7 @@ export async function getTicketMenuCounts(userId: string, role: Role): Promise<T
   const [ticketCount, me, approvalCount] = await Promise.all([
     prisma.ticket.count({ where: { createdById: userId, status: { not: "CLOSED" }, deletedAt: null } }),
     prisma.user.findUnique({ where: { id: userId }, select: { userGroupId: true } }),
-    role === "SUPERVISOR"
+    role === Role.SUPERVISOR
       ? prisma.ticketApproval.count({
           where: {
             status: "PENDING",

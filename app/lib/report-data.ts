@@ -1,7 +1,7 @@
 import "server-only";
 import { prisma } from "@/app/lib/db";
 import { Prisma, type TicketStatus, type Priority } from "@/app/generated/prisma/client";
-import { STATUSES, PRIORITIES } from "@/app/(dashboard)/tickets/ticket-badges";
+import { STATUSES, PRIORITIES } from "@/app/(backend)/tickets/ticket-badges";
 import type { ReportFilters } from "@/app/lib/report-filters";
 
 const DAY_MS = 24 * 60 * 60 * 1000;

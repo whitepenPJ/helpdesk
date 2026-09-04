@@ -3,6 +3,7 @@
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/app/lib/db";
+import { Role } from "@/app/generated/prisma/enums";
 import { requireUser } from "@/app/lib/dal";
 import { saveAttachments } from "@/app/lib/attachments";
 import { notifyCommentAdded } from "@/app/lib/notifications";
@@ -38,7 +39,7 @@ export async function createComment(
   // ticket-detail-content.tsx — anyone who can view the ticket can comment
   // on it: the owner, an individual assignee, a member of the assigned
   // group, or the reviewing supervisor.
-  const isAdmin = session.user.role === "ADMIN";
+  const isAdmin = session.user.role === Role.ADMIN;
   const isOwner = ticket.createdById === session.user.id;
   const isAssignee = ticket.TicketAssignee.some((a) => a.userId === session.user.id);
   let canComment = isAdmin || isOwner || isAssignee;

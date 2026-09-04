@@ -6,7 +6,8 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/app/lib/db";
 import { requireUser, requireAdmin } from "@/app/lib/dal";
 import { Prisma, type TicketStatus, type Priority } from "@/app/generated/prisma/client";
-import { STATUSES, PRIORITIES } from "@/app/(dashboard)/tickets/ticket-badges";
+import { Role } from "@/app/generated/prisma/enums";
+import { STATUSES, PRIORITIES } from "@/app/(backend)/tickets/ticket-badges";
 import {
   notifyTicketAssigned,
   notifyOwnerTicketAssigned,
@@ -29,6 +30,7 @@ export type TicketFormValues = {
   departmentId: string;
   creatorId: string;
   transactionDate: string;
+  approvalMessage: string;
 };
 
 // The transaction date field is a plain `<input type="datetime-local">`
@@ -55,6 +57,13 @@ export type TicketFormState =
 // resets to 0001 when the month changes — e.g. TK2608140001, ...,
 // TK2608310042, then TK2609010001 on September 1st. The day still appears
 // in the number, but doesn't reset the counter on its own.
+//
+// Finds the running max via a SQL MAX() rather than fetching every ticket
+// number for the month into JS to reduce over — since every number for a
+// given month shares the same fixed-width prefix, a plain string MAX() is
+// equivalent to a numeric max of the suffix, and Postgres can satisfy a
+// `LIKE 'prefix%'` scan against the unique index on ticketNumber instead of
+// transferring the whole month's rows for every single ticket created.
 export async function generateTicketNumber(): Promise<string> {
   const now = new Date();
   const yy = String(now.getUTCFullYear()).slice(2);
@@ -62,15 +71,11 @@ export async function generateTicketNumber(): Promise<string> {
   const dd = String(now.getUTCDate()).padStart(2, "0");
   const monthPrefix = `TK${yy}${mm}`;
 
-  const monthTickets = await prisma.ticket.findMany({
-    where: { ticketNumber: { startsWith: monthPrefix } },
-    select: { ticketNumber: true },
-  });
-  const lastSeq = monthTickets.reduce((max, { ticketNumber }) => {
-    const seq = Number(ticketNumber.slice(-4));
-    return Number.isFinite(seq) && seq > max ? seq : max;
-  }, 0);
-  const nextSeq = String(lastSeq + 1).padStart(4, "0");
+  const [row] = await prisma.$queryRaw<{ max: string | null }[]>(
+    Prisma.sql`SELECT MAX("ticketNumber") as max FROM "Ticket" WHERE "ticketNumber" LIKE ${monthPrefix + "%"}`
+  );
+  const lastSeq = row?.max ? Number(row.max.slice(-4)) : 0;
+  const nextSeq = String((Number.isFinite(lastSeq) ? lastSeq : 0) + 1).padStart(4, "0");
   return `${monthPrefix}${dd}${nextSeq}`;
 }
 
@@ -84,13 +89,14 @@ export async function createTicket(_prevState: TicketFormState, formData: FormDa
   const telephone = formData.get("telephone");
   const requestedCreatorId = formData.get("creatorId");
   const needApproval = formData.get("needApproval") === "true";
+  const approvalMessage = formData.get("approvalMessage");
   const attachmentFiles = formData.getAll("attachments").filter((f) => f instanceof File) as File[];
 
   // Only an admin's, or a user with Master User's "Open Ticket for Other
   // User" option, chosen value is honored — anyone else's submission is
   // ignored server-side regardless of what the (read-only) field contained,
   // since a direct POST can send whatever it wants.
-  const isAdmin = session.user.role === "ADMIN";
+  const isAdmin = session.user.role === Role.ADMIN;
   const submitter = await prisma.user.findUnique({
     where: { id: session.user.id },
     select: { canOpenTicketForOthers: true },
@@ -116,6 +122,7 @@ export async function createTicket(_prevState: TicketFormState, formData: FormDa
     departmentId: "",
     creatorId,
     transactionDate: typeof transactionDateRaw === "string" ? transactionDateRaw : "",
+    approvalMessage: typeof approvalMessage === "string" ? approvalMessage : "",
   };
 
   const errors: Record<string, string[]> = {};
@@ -131,6 +138,9 @@ export async function createTicket(_prevState: TicketFormState, formData: FormDa
   }
   if (typeof categoryId !== "string" || !categoryId) {
     errors.categoryId = ["Select a category."];
+  }
+  if (needApproval && (typeof approvalMessage !== "string" || approvalMessage.trim().length === 0)) {
+    errors.approvalMessage = ["Enter a message for the approver."];
   }
 
   if (Object.keys(errors).length > 0) {
@@ -207,7 +217,6 @@ export async function createTicket(_prevState: TicketFormState, formData: FormDa
           ticketId,
           actorId: session.user.id,
           action: "Ticket created",
-          newState: initialStatus,
         },
       });
       if (shouldAutoAssign) {
@@ -253,14 +262,18 @@ export async function createTicket(_prevState: TicketFormState, formData: FormDa
 
   // Admins are always notified a ticket was created; an auto-assigned
   // ticket's assignee(s) additionally get their own "assigned to you"
-  // notification — both fire together (not either/or).
-  await notifyTicketCreated(ticketId).catch((error) => console.error("createTicket: notifyTicketCreated failed", error));
-  if (shouldAutoAssign) {
-    await notifyTicketAssigned(ticketId, {
-      assigneeIds: categoryAdmins.map((a) => a.adminId),
-      assignedGroupIds: categoryGroups.map((g) => g.userGroupId),
-    }).catch((error) => console.error("createTicket: notifyTicketAssigned failed", error));
-  }
+  // notification — both fire together (not either/or). Independent of each
+  // other, so run them concurrently rather than one full round-trip after
+  // the other (each does its own ticket re-fetch + recipient lookup).
+  await Promise.all([
+    notifyTicketCreated(ticketId).catch((error) => console.error("createTicket: notifyTicketCreated failed", error)),
+    shouldAutoAssign
+      ? notifyTicketAssigned(ticketId, {
+          assigneeIds: categoryAdmins.map((a) => a.adminId),
+          assignedGroupIds: categoryGroups.map((g) => g.userGroupId),
+        }).catch((error) => console.error("createTicket: notifyTicketAssigned failed", error))
+      : Promise.resolve(),
+  ]);
 
   // "Need approval" — re-checked server-side (the checkbox is only enabled
   // client-side when the department has an approver, but a direct POST
@@ -275,6 +288,7 @@ export async function createTicket(_prevState: TicketFormState, formData: FormDa
           id: randomUUID(),
           ticketId,
           status: "PENDING",
+          requestMessage: (approvalMessage as string).trim(),
           updatedAt: new Date(),
         },
       }),
@@ -320,7 +334,7 @@ export async function editTicket(
   formData: FormData
 ): Promise<TicketFormState> {
   const session = await requireUser();
-  const isAdmin = session.user.role === "ADMIN";
+  const isAdmin = session.user.role === Role.ADMIN;
 
   const ticket = await prisma.ticket.findUnique({ where: { id: ticketId } });
   if (!ticket) return { errors: { form: ["Ticket not found."] } };
@@ -349,6 +363,7 @@ export async function editTicket(
     departmentId: typeof departmentId === "string" ? departmentId : "",
     creatorId: ticket.createdById,
     transactionDate: typeof transactionDateRaw === "string" ? transactionDateRaw : "",
+    approvalMessage: "",
   };
 
   const errors: Record<string, string[]> = {};
@@ -435,7 +450,7 @@ export async function deleteTicket(
   formData: FormData
 ): Promise<DeleteTicketState> {
   const session = await requireUser();
-  const isAdmin = session.user.role === "ADMIN";
+  const isAdmin = session.user.role === Role.ADMIN;
 
   const ticket = await prisma.ticket.findUnique({
     where: { id: ticketId },
@@ -891,7 +906,7 @@ export async function requestTicketApproval(
   });
   if (!ticket) return { error: "Ticket not found." };
 
-  const isAdmin = session.user.role === "ADMIN";
+  const isAdmin = session.user.role === Role.ADMIN;
   if (!isAdmin) {
     const isAssignee = await prisma.ticketAssignee.findFirst({ where: { ticketId, userId: session.user.id } });
     if (!isAssignee) return { error: "You don't have permission to request approval on this ticket." };

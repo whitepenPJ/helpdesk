@@ -17,7 +17,7 @@ A support ticketing system: customers file tickets, agents/admins triage and res
 AdminLTE's auth pages (login/register/forgot-password) and its dashboard shell (sidebar + navbar) need different `<html>`/`<body>` markup and different vendor scripts (dashboard needs Bootstrap JS, Popper, OverlayScrollbars, and `adminlte.js` for the sidebar; auth pages don't). Use Next's **multiple root layouts** pattern (route groups, each with its own root layout defining `<html>`/`<body>`) rather than one shared root layout with conditional logic:
 
 - `app/(auth)/layout.tsx` — root layout for `/login`, `/register`, `/forgot-password`. Loads only what those pages need (AdminLTE CSS, Bootstrap Icons, fonts, the no-flash theme-init script).
-- `app/(dashboard)/layout.tsx` — root layout for the authenticated admin/agent/customer app, once it exists. Add sidebar/navbar chrome and the additional vendor scripts there, not to the auth layout.
+- `app/(backend)/layout.tsx` — root layout for the authenticated admin/agent/customer app, once it exists. Add sidebar/navbar chrome and the additional vendor scripts there, not to the auth layout.
 
 Each root layout is self-contained (own `<html>`, `<body>`, `<head>` tags); don't reintroduce a single top-level `app/layout.tsx` alongside these groups.
 
@@ -99,7 +99,7 @@ Don't invent parallel models for things this schema already covers (e.g. don't a
 
 ## Project structure
 
-- `app/` — routes only (App Router file conventions: `page`, `layout`, `loading`, `error`, route groups like `(auth)`/`(dashboard)`).
+- `app/` — routes only (App Router file conventions: `page`, `layout`, `loading`, `error`, route groups like `(auth)`/`(backend)`).
 - `app/actions/` — Server Actions (`'use server'` files), grouped by domain (`tickets.ts`, `comments.ts`, `auth.ts`).
 - `app/lib/` — `db.ts` (Prisma client singleton, built with the `pg` driver adapter). Add `dal.ts`/`dto.ts` here as ticket-domain data access grows.
 - `auth.ts` (project root) — Auth.js config; `next-auth.d.ts` (project root) — Session/JWT type augmentation.

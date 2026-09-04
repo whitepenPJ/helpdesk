@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/app/lib/db";
+import { Role } from "@/app/generated/prisma/enums";
 
 // Backs the Tickets list's search-box autocomplete (ticket-search-input.tsx)
 // — same title/ticketNumber substring match and own-tickets-only scoping as
@@ -17,7 +18,7 @@ export async function GET(request: Request) {
     return NextResponse.json([]);
   }
 
-  const isAdmin = session.user.role === "ADMIN";
+  const isAdmin = session.user.role === Role.ADMIN;
   const tickets = await prisma.ticket.findMany({
     where: {
       deletedAt: null,

@@ -8,8 +8,9 @@ import { authenticateMcpRequest, type McpAuthedUser } from "@/app/lib/mcp-auth";
 import { excerpt } from "@/app/lib/text";
 import { generateTicketNumber } from "@/app/actions/tickets";
 import { notifyTicketCreated } from "@/app/lib/notifications";
-import { STATUSES } from "@/app/(dashboard)/tickets/ticket-badges";
+import { STATUSES } from "@/app/(backend)/tickets/ticket-badges";
 import type { TicketStatus } from "@/app/generated/prisma/client";
+import { Role } from "@/app/generated/prisma/enums";
 
 // Remote HTTP MCP server (stateless mode — a fresh McpServer/transport pair
 // per request, no session/connection state kept between calls, since a
@@ -162,7 +163,7 @@ function buildServer(user: McpAuthedUser): McpServer {
       const tickets = await prisma.ticket.findMany({
         where: {
           deletedAt: null,
-          ...(user.role === "ADMIN" ? {} : { createdById: user.id }),
+          ...(user.role === Role.ADMIN ? {} : { createdById: user.id }),
           ...(status ? { status } : {}),
         },
         orderBy: { createdAt: "desc" },

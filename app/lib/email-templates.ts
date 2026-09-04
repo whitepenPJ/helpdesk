@@ -18,7 +18,7 @@ export type NewTicketEmailData = {
 };
 
 // Border/text colors for the priority pill — same LOW→URGENT escalation as
-// PRIORITY_BADGE (app/(dashboard)/tickets/ticket-badges.ts), translated from
+// PRIORITY_BADGE (app/(backend)/tickets/ticket-badges.ts), translated from
 // Bootstrap variants to hex since email clients don't get our stylesheet.
 const PRIORITY_COLOR: Record<TicketPriority, { border: string; text: string }> = {
   LOW: { border: "#8a8a8d", text: "#5d5d60" },

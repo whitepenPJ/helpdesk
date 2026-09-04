@@ -121,7 +121,7 @@ can view/comment on any ticket.
   migration).
 - **AdminLTE 4 / Bootstrap 5** UI — vendored, compiled assets copied into
   `public/adminlte/`, no Tailwind. Multiple Next.js **root layouts** (route groups):
-  `app/(auth)/layout.tsx` for login, `app/(dashboard)/layout.tsx` for everything else.
+  `app/(auth)/layout.tsx` for login, `app/(backend)/layout.tsx` for everything else.
 - **Notification channels**: email (Mailgun HTTP API), browser Web Push (VAPID), and a
   Microsoft Teams incoming-webhook stub — see §4.6.
 
@@ -130,7 +130,7 @@ can view/comment on any ticket.
 ```
 app/
   (auth)/login/              Login page + form (own root layout)
-  (dashboard)/                Authenticated app (own root layout: sidebar + header)
+  (backend)/                Authenticated app (own root layout: sidebar + header)
     dashboard/                 Admin-only demo dashboard
     tickets/                   /tickets (own/all), /tickets/new, /tickets/[id],
                                 /tickets/assigned, /tickets/approval

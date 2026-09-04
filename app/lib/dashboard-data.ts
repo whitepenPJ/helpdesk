@@ -1,6 +1,6 @@
 import "server-only";
 import { prisma } from "@/app/lib/db";
-import { STATUSES, PRIORITIES } from "@/app/(dashboard)/tickets/ticket-badges";
+import { STATUSES, PRIORITIES } from "@/app/(backend)/tickets/ticket-badges";
 import { OPEN_STATUSES, AWAITING_CLOSE_STATUSES } from "@/app/lib/ticket-status-groups";
 import type { TicketStatus, Priority } from "@/app/generated/prisma/client";
 

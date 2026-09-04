@@ -18,7 +18,7 @@ model User {
   isAssignee                               Boolean            @default(false)
   // Master User's "Options" group — lets this user pick any user as the
   // Creator on the New Ticket form (like an admin can), instead of it being
-  // locked to themselves. See canChangeCreator in app/(dashboard)/tickets/new/page.tsx.
+  // locked to themselves. See canChangeCreator in app/(backend)/tickets/new/page.tsx.
   canOpenTicketForOthers                   Boolean            @default(false)
   image                                    String?
   companyId                                String?
