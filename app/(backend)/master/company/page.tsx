@@ -6,9 +6,10 @@ import { deleteCompany } from "@/app/actions/companies";
 import { ListCard, type ListColumn } from "../../_components/list-card";
 import { RowActions } from "../../_components/row-actions";
 import { ErrorAlert } from "../../_components/error-alert";
-import { parseSort, type SortDir } from "@/app/lib/table-sort";
+import type { SortDir } from "@/app/lib/table-sort";
 import type { Prisma } from "@/app/generated/prisma/client";
-import { parsePageSize } from "@/app/lib/page-size";
+import { fetchPage } from "@/app/lib/list-query";
+import { parseListParams } from "@/app/lib/list-params";
 
 export const metadata: Metadata = { title: "Companies" };
 
@@ -46,33 +47,28 @@ const ERROR_MESSAGES: Record<string, string> = {
 export default async function CompaniesPage({ searchParams }: PageProps<"/master/company">) {
   const session = await requireAdmin();
 
-  const { q, page, pageSize: pageSizeParam, error, sort, dir } = await searchParams;
-  const query = typeof q === "string" ? q : "";
-  const pageSize = parsePageSize(typeof pageSizeParam === "string" ? pageSizeParam : undefined);
-  const currentPage = Math.max(1, Number(page) || 1);
-  const { sortBy, sortDir } = parseSort(
-    typeof sort === "string" ? sort : undefined,
-    typeof dir === "string" ? dir : undefined,
-    SORT_COLUMNS,
-    { column: "createdAt", dir: "desc" }
-  );
+  const params = await searchParams;
+  const { query, currentPage, pageSize, sortBy, sortDir, linkQuery } = parseListParams(params, SORT_COLUMNS, {
+    column: "createdAt",
+    dir: "desc",
+  });
+  const errorMessage = typeof params.error === "string" ? ERROR_MESSAGES[params.error] : undefined;
 
   const where: Prisma.CompanyWhereInput = query ? { name: { contains: query, mode: "insensitive" } } : {};
 
-  const [companies, total] = await Promise.all([
-    prisma.company.findMany({
-      where,
-      include: { _count: { select: { User: true, Department: true } } },
-      orderBy: buildOrderBy(sortBy, sortDir),
-      skip: (currentPage - 1) * pageSize,
-      take: pageSize,
-    }),
-    prisma.company.count({ where }),
-  ]);
+  const { items: companies, total } = await fetchPage(
+    () =>
+      prisma.company.findMany({
+        where,
+        include: { _count: { select: { User: true, Department: true } } },
+        orderBy: buildOrderBy(sortBy, sortDir),
+        skip: (currentPage - 1) * pageSize,
+        take: pageSize,
+      }),
+    () => prisma.company.count({ where })
+  );
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const errorMessage = typeof error === "string" ? ERROR_MESSAGES[error] : undefined;
-  const linkQuery = { ...(query ? { q: query } : {}), pageSize: String(pageSize) };
 
   return (
     <>

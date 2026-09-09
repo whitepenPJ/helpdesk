@@ -5,10 +5,11 @@ import { PageHeader } from "../../_components/page-header";
 import { deleteLessonLearned } from "@/app/actions/lesson-learned";
 import { ListCard, type ListColumn } from "../../_components/list-card";
 import { RowActions } from "../../_components/row-actions";
-import { parseSort, type SortDir } from "@/app/lib/table-sort";
+import type { SortDir } from "@/app/lib/table-sort";
 import { formatDateTime } from "@/app/lib/date-format";
 import type { Prisma } from "@/app/generated/prisma/client";
-import { parsePageSize } from "@/app/lib/page-size";
+import { fetchPage } from "@/app/lib/list-query";
+import { parseListParams } from "@/app/lib/list-params";
 
 export const metadata: Metadata = { title: "Lesson Learned" };
 
@@ -31,31 +32,26 @@ function buildOrderBy(sortBy: SortColumn, sortDir: SortDir): Prisma.LessonLearne
 export default async function LessonLearnedAdminPage({ searchParams }: PageProps<"/master/lesson-learned">) {
   const session = await requireAdmin();
 
-  const { q, page, pageSize: pageSizeParam, sort, dir } = await searchParams;
-  const query = typeof q === "string" ? q : "";
-  const pageSize = parsePageSize(typeof pageSizeParam === "string" ? pageSizeParam : undefined);
-  const currentPage = Math.max(1, Number(page) || 1);
-  const { sortBy, sortDir } = parseSort(
-    typeof sort === "string" ? sort : undefined,
-    typeof dir === "string" ? dir : undefined,
-    SORT_COLUMNS,
-    { column: "createdAt", dir: "desc" }
-  );
+  const params = await searchParams;
+  const { query, currentPage, pageSize, sortBy, sortDir, linkQuery } = parseListParams(params, SORT_COLUMNS, {
+    column: "createdAt",
+    dir: "desc",
+  });
 
   const where: Prisma.LessonLearnedWhereInput = query ? { title: { contains: query, mode: "insensitive" } } : {};
 
-  const [entries, total] = await Promise.all([
-    prisma.lessonLearned.findMany({
-      where,
-      orderBy: buildOrderBy(sortBy, sortDir),
-      skip: (currentPage - 1) * pageSize,
-      take: pageSize,
-    }),
-    prisma.lessonLearned.count({ where }),
-  ]);
+  const { items: entries, total } = await fetchPage(
+    () =>
+      prisma.lessonLearned.findMany({
+        where,
+        orderBy: buildOrderBy(sortBy, sortDir),
+        skip: (currentPage - 1) * pageSize,
+        take: pageSize,
+      }),
+    () => prisma.lessonLearned.count({ where })
+  );
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const linkQuery = { ...(query ? { q: query } : {}), pageSize: String(pageSize) };
 
   return (
     <>
