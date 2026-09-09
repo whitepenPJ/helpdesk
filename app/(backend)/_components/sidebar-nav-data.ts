@@ -84,6 +84,8 @@ export function buildSidebarNav({ role, ticketCount, assignedCount, approvalCoun
   // Role-agnostic knowledge-base browse — otherwise only reachable via the
   // Profile page's Lesson Learned card.
   items.push({ icon: "bi-lightbulb", label: "Lesson Learned", href: "/lesson-learned" });
+  // Role-agnostic: the manual itself filters its sections by role.
+  items.push({ icon: "bi-book", label: "User Manual", href: "/manual" });
   if (CHAT_ENABLED) {
     items.push({ icon: "bi-robot", label: "Ask AI", href: "/chat" });
   }
