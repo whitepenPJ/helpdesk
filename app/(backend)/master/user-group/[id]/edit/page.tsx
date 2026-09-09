@@ -17,7 +17,7 @@ export default async function EditUserGroupPage({ params }: PageProps<"/master/u
   // pickable again in the same session rather than being pre-excluded here.
   const [group, members, availableUsers] = await Promise.all([
     prisma.userGroup.findUnique({ where: { id } }),
-    prisma.user.findMany({ where: { userGroupId: id }, orderBy: { name: "asc" }, select: { id: true, name: true, email: true } }),
+    prisma.user.findMany({ where: { UserGroupMember: { some: { userGroupId: id } } }, orderBy: { name: "asc" }, select: { id: true, name: true, email: true } }),
     prisma.user.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, email: true } }),
   ]);
 

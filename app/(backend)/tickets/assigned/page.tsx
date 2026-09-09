@@ -32,7 +32,11 @@ function buildOrderBy(sortBy: SortColumn, sortDir: SortDir): Prisma.TicketOrderB
 export default async function AssignedTicketsPage({ searchParams }: PageProps<"/tickets/assigned">) {
   const session = await requireUser();
 
-  const me = await prisma.user.findUnique({ where: { id: session.user.id }, select: { userGroupId: true } });
+  const memberships = await prisma.userGroupMember.findMany({
+    where: { userId: session.user.id },
+    select: { userGroupId: true },
+  });
+  const myGroupIds = memberships.map((m) => m.userGroupId);
 
   const { q, status, page, pageSize: pageSizeParam, sort, dir } = await searchParams;
   const query = typeof q === "string" ? q : "";
@@ -57,7 +61,9 @@ export default async function AssignedTicketsPage({ searchParams }: PageProps<"/
       { deletedAt: null },
       {
         OR: [
-          ...(me?.userGroupId ? [{ TicketAssignedGroup: { some: { userGroupId: me.userGroupId } } }] : []),
+          ...(myGroupIds.length
+            ? [{ TicketAssignedGroup: { some: { userGroupId: { in: myGroupIds } } } }]
+            : []),
           { TicketAssignee: { some: { userId: session.user.id } } },
         ],
       },
@@ -103,8 +109,8 @@ export default async function AssignedTicketsPage({ searchParams }: PageProps<"/
     // supervisor (not actionable by the assignee despite sounding urgent),
     // CLOSED last. Deliberately different ranking from Ticket Management's
     // admin-triage default order.
-    const groupFragment = me?.userGroupId
-      ? Prisma.sql`OR EXISTS (SELECT 1 FROM "TicketAssignedGroup" tg WHERE tg."ticketId" = "Ticket".id AND tg."userGroupId" = ${me.userGroupId})`
+    const groupFragment = myGroupIds.length
+      ? Prisma.sql`OR EXISTS (SELECT 1 FROM "TicketAssignedGroup" tg WHERE tg."ticketId" = "Ticket".id AND tg."userGroupId" IN (${Prisma.join(myGroupIds)}))`
       : Prisma.empty;
     const searchFragment = query
       ? Prisma.sql`AND (title ILIKE ${`%${query}%`} OR "ticketNumber" ILIKE ${`%${query}%`})`

@@ -42,9 +42,9 @@ export type TicketMenuCounts = {
 // individually to the user (via TicketAssignee). Approval Ticket only
 // applies to supervisors.
 export async function getTicketMenuCounts(userId: string, role: Role): Promise<TicketMenuCounts> {
-  const [ticketCount, me, approvalCount] = await Promise.all([
+  const [ticketCount, memberships, approvalCount] = await Promise.all([
     prisma.ticket.count({ where: { createdById: userId, status: { not: "CLOSED" }, deletedAt: null } }),
-    prisma.user.findUnique({ where: { id: userId }, select: { userGroupId: true } }),
+    prisma.userGroupMember.findMany({ where: { userId }, select: { userGroupId: true } }),
     role === Role.SUPERVISOR
       ? prisma.ticketApproval.count({
           where: {
@@ -60,7 +60,9 @@ export async function getTicketMenuCounts(userId: string, role: Role): Promise<T
       status: { not: "CLOSED" },
       deletedAt: null,
       OR: [
-        ...(me?.userGroupId ? [{ TicketAssignedGroup: { some: { userGroupId: me.userGroupId } } }] : []),
+        ...(memberships.length
+          ? [{ TicketAssignedGroup: { some: { userGroupId: { in: memberships.map((m) => m.userGroupId) } } } }]
+          : []),
         { TicketAssignee: { some: { userId } } },
       ],
     },

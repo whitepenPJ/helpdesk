@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/app/lib/db";
 import { requireAdmin } from "@/app/lib/dal";
+import { isNonEmptyString } from "@/app/lib/text";
 
 export type StagedMemberInput = { id: string; label: string };
 
@@ -49,7 +50,7 @@ export async function createUserGroup(
   const values = { name: typeof name === "string" ? name : "", isActive, members };
   const errors: Record<string, string[]> = {};
 
-  if (typeof name !== "string" || name.trim().length === 0) {
+  if (!isNonEmptyString(name)) {
     errors.name = ["Enter a group name."];
   }
 
@@ -70,7 +71,12 @@ export async function createUserGroup(
       data: { id: groupId, name: (name as string).trim(), isActive, updatedAt: now },
     }),
     ...(memberIds.length
-      ? [prisma.user.updateMany({ where: { id: { in: memberIds } }, data: { userGroupId: groupId } })]
+      ? [
+          prisma.userGroupMember.createMany({
+            data: memberIds.map((userId) => ({ id: randomUUID(), userGroupId: groupId, userId })),
+            skipDuplicates: true,
+          }),
+        ]
       : []),
   ]);
 
@@ -90,7 +96,7 @@ export async function updateUserGroup(
   const values = { name: typeof name === "string" ? name : "", isActive, members };
   const errors: Record<string, string[]> = {};
 
-  if (typeof name !== "string" || name.trim().length === 0) {
+  if (!isNonEmptyString(name)) {
     errors.name = ["Enter a group name."];
   }
 
@@ -111,10 +117,15 @@ export async function updateUserGroup(
       data: { name: (name as string).trim(), isActive, updatedAt: now },
     }),
     // Replace membership wholesale to match the staged list exactly: drop
-    // anyone no longer in it, add anyone new.
-    prisma.user.updateMany({ where: { userGroupId: id, id: { notIn: memberIds } }, data: { userGroupId: null } }),
+    // every current row, then re-add the staged set.
+    prisma.userGroupMember.deleteMany({ where: { userGroupId: id } }),
     ...(memberIds.length
-      ? [prisma.user.updateMany({ where: { id: { in: memberIds } }, data: { userGroupId: id } })]
+      ? [
+          prisma.userGroupMember.createMany({
+            data: memberIds.map((userId) => ({ id: randomUUID(), userGroupId: id, userId })),
+            skipDuplicates: true,
+          }),
+        ]
       : []),
   ]);
 
@@ -126,7 +137,7 @@ export async function deleteUserGroup(id: string) {
   await requireAdmin();
 
   const [userCount, ticketCount] = await Promise.all([
-    prisma.user.count({ where: { userGroupId: id } }),
+    prisma.userGroupMember.count({ where: { userGroupId: id } }),
     prisma.ticketAssignedGroup.count({ where: { userGroupId: id } }),
   ]);
 

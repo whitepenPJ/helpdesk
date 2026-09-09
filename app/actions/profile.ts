@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/app/lib/db";
 import { requireUser } from "@/app/lib/dal";
+import { isNonEmptyString } from "@/app/lib/text";
 
 export type ProfileFormValues = {
   name: string;
@@ -35,7 +36,7 @@ export async function updateProfile(_prevState: ProfileFormState, formData: Form
   };
 
   const errors: Record<string, string[]> = {};
-  if (typeof name !== "string" || name.trim().length === 0) {
+  if (!isNonEmptyString(name)) {
     errors.name = ["Enter a name."];
   }
 

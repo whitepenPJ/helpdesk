@@ -71,7 +71,7 @@ async function resolveAssigneeRecipients(assigneeIds: string[], assignedGroupIds
       : Promise.resolve([]),
     assignedGroupIds.length
       ? prisma.user.findMany({
-          where: { userGroupId: { in: assignedGroupIds }, status: "ACTIVE" },
+          where: { UserGroupMember: { some: { userGroupId: { in: assignedGroupIds } } }, status: "ACTIVE" },
           select: { id: true, email: true },
         })
       : Promise.resolve([]),

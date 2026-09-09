@@ -1,5 +1,5 @@
 import "server-only";
-import { excerpt } from "@/app/lib/text";
+import { excerpt, isNonEmptyString } from "@/app/lib/text";
 
 export type ChatMessage = { role: "user" | "assistant"; content: string };
 
@@ -118,7 +118,7 @@ export async function getChatReply(messages: ChatMessage[], lessons: LessonConte
 
     const data = await response.json();
     const raw = data?.choices?.[0]?.message?.content;
-    if (typeof raw !== "string" || raw.trim().length === 0) {
+    if (!isNonEmptyString(raw)) {
       console.error("getChatReply: OpenRouter returned no content", data);
       return UNREACHABLE;
     }

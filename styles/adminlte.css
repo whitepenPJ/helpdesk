@@ -2087,6 +2087,10 @@ progress {
   margin-bottom: 0.5rem;
 }
 
+.form-label::after {
+  content: ":";
+}
+
 .col-form-label {
   padding-top: calc(0.375rem + var(--bs-border-width));
   padding-bottom: calc(0.375rem + var(--bs-border-width));

@@ -7,6 +7,7 @@ import { Role } from "@/app/generated/prisma/enums";
 import { requireUser } from "@/app/lib/dal";
 import { saveAttachments } from "@/app/lib/attachments";
 import { notifyCommentAdded } from "@/app/lib/notifications";
+import { isNonEmptyString } from "@/app/lib/text";
 
 export type CommentFormState =
   | {
@@ -44,8 +45,12 @@ export async function createComment(
   const isAssignee = ticket.TicketAssignee.some((a) => a.userId === session.user.id);
   let canComment = isAdmin || isOwner || isAssignee;
   if (!canComment) {
-    const me = await prisma.user.findUnique({ where: { id: session.user.id }, select: { userGroupId: true } });
-    canComment = Boolean(me?.userGroupId) && ticket.TicketAssignedGroup.some((g) => g.userGroupId === me?.userGroupId);
+    const memberships = await prisma.userGroupMember.findMany({
+      where: { userId: session.user.id },
+      select: { userGroupId: true },
+    });
+    const myGroupIds = new Set(memberships.map((m) => m.userGroupId));
+    canComment = ticket.TicketAssignedGroup.some((g) => myGroupIds.has(g.userGroupId));
   }
   if (!canComment) {
     const approval = await prisma.ticketApproval.findUnique({
@@ -64,7 +69,7 @@ export async function createComment(
   }
 
   const message = formData.get("message");
-  if (typeof message !== "string" || message.trim().length === 0) {
+  if (!isNonEmptyString(message)) {
     return { errors: { message: ["Enter a comment."] }, values: { message: typeof message === "string" ? message : "" } };
   }
 

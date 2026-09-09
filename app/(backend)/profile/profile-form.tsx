@@ -85,14 +85,10 @@ export function ProfileForm({
             </div>
 
             <div className="col-md-6">
-              <label className="form-label">Company</label>
-              <input type="text" className="form-control" value={companyName ?? "—"} disabled readOnly />
-              <div className="form-text">Set by an admin — see Master User to change it.</div>
+              <label className="form-label">Company</label>&nbsp;{companyName ?? "—"}
             </div>
             <div className="col-md-6">
-              <label className="form-label">Department</label>
-              <input type="text" className="form-control" value={departmentName ?? "—"} disabled readOnly />
-              <div className="form-text">Set by an admin — see Master User to change it.</div>
+              <label className="form-label">Department</label>&nbsp;{departmentName ?? "—"}
             </div>
           </div>
         </div>

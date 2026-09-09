@@ -202,9 +202,12 @@ export async function TicketDetailContent({
     let isVisible = isOwner || isAssignee;
 
     if (!isVisible) {
-      const me = await prisma.user.findUnique({ where: { id: session.user.id }, select: { userGroupId: true } });
-      isVisible =
-        Boolean(me?.userGroupId) && ticket.TicketAssignedGroup.some((g) => g.userGroupId === me?.userGroupId);
+      const memberships = await prisma.userGroupMember.findMany({
+        where: { userId: session.user.id },
+        select: { userGroupId: true },
+      });
+      const myGroupIds = new Set(memberships.map((m) => m.userGroupId));
+      isVisible = ticket.TicketAssignedGroup.some((g) => myGroupIds.has(g.userGroupId));
     }
 
     if (!isVisible) {

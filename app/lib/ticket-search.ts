@@ -100,7 +100,8 @@ export async function searchTickets(userId: string, role: Role, query: string): 
   const programs = programsForRole(role);
   const match = matchWhere(trimmed);
 
-  const me = await prisma.user.findUnique({ where: { id: userId }, select: { userGroupId: true } });
+  const memberships = await prisma.userGroupMember.findMany({ where: { userId }, select: { userGroupId: true } });
+  const myGroupIds = memberships.map((m) => m.userGroupId);
 
   const queries: Promise<TicketSearchResult[]>[] = [];
 
@@ -125,7 +126,9 @@ export async function searchTickets(userId: string, role: Role, query: string): 
               match,
               {
                 OR: [
-                  ...(me?.userGroupId ? [{ TicketAssignedGroup: { some: { userGroupId: me.userGroupId } } }] : []),
+                  ...(myGroupIds.length
+                    ? [{ TicketAssignedGroup: { some: { userGroupId: { in: myGroupIds } } } }]
+                    : []),
                   { TicketAssignee: { some: { userId } } },
                 ],
               },

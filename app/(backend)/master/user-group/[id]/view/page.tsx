@@ -13,7 +13,7 @@ export default async function ViewUserGroupPage({ params }: PageProps<"/master/u
   const { id } = await params;
   const [group, members] = await Promise.all([
     prisma.userGroup.findUnique({ where: { id } }),
-    prisma.user.findMany({ where: { userGroupId: id }, orderBy: { name: "asc" }, select: { id: true, name: true, email: true } }),
+    prisma.user.findMany({ where: { UserGroupMember: { some: { userGroupId: id } } }, orderBy: { name: "asc" }, select: { id: true, name: true, email: true } }),
   ]);
 
   if (!group) {

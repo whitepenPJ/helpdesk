@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/app/lib/db";
 import { requireAdmin } from "@/app/lib/dal";
 import { saveAttachments } from "@/app/lib/attachments";
-import { stripHtml } from "@/app/lib/text";
+import { isNonEmptyString, stripHtml } from "@/app/lib/text";
 
 export type LessonLearnedFormValues = {
   title: string;
@@ -41,7 +41,7 @@ function toFormValues(fields: ReturnType<typeof readCommonFields>): LessonLearne
 
 function validate(fields: ReturnType<typeof readCommonFields>): Record<string, string[]> {
   const errors: Record<string, string[]> = {};
-  if (typeof fields.title !== "string" || fields.title.trim().length === 0) {
+  if (!isNonEmptyString(fields.title)) {
     errors.title = ["Enter a title."];
   }
   if (typeof fields.description !== "string" || stripHtml(fields.description).length === 0) {

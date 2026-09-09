@@ -44,7 +44,7 @@ export default async function ChatPage() {
     email: true,
     telephone: true,
     Company: { select: { name: true } },
-    Department_User_departmentIdToDepartment: {
+    department: {
       select: {
         name: true,
         DepartmentApprover: { select: { User: { select: { name: true, email: true } } } },
@@ -70,9 +70,9 @@ export default async function ChatPage() {
                     value: u.id,
                     label: `${u.name} (${u.email})`,
                     companyName: u.Company?.name ?? null,
-                    departmentName: u.Department_User_departmentIdToDepartment?.name ?? null,
+                    departmentName: u.department?.name ?? null,
                     telephone: u.telephone,
-                    approvers: (u.Department_User_departmentIdToDepartment?.DepartmentApprover ?? []).map((a) => a.User),
+                    approvers: (u.department?.DepartmentApprover ?? []).map((a) => a.User),
                   })),
                   defaultCreatorId: session.user.id,
                   canChangeCreator,

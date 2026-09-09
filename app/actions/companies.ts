@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/app/lib/db";
 import { requireAdmin } from "@/app/lib/dal";
+import { isNonEmptyString } from "@/app/lib/text";
 
 export type CompanyFormState =
   | {
@@ -30,7 +31,7 @@ export async function createCompany(_prevState: CompanyFormState, formData: Form
   const values = { name: typeof name === "string" ? name : "", code: codeValue ?? "", isActive };
   const errors: Record<string, string[]> = {};
 
-  if (typeof name !== "string" || name.trim().length === 0) {
+  if (!isNonEmptyString(name)) {
     errors.name = ["Enter a company name."];
   }
 
@@ -71,7 +72,7 @@ export async function updateCompany(
   const values = { name: typeof name === "string" ? name : "", code: codeValue ?? "", isActive };
   const errors: Record<string, string[]> = {};
 
-  if (typeof name !== "string" || name.trim().length === 0) {
+  if (!isNonEmptyString(name)) {
     errors.name = ["Enter a company name."];
   }
 
@@ -137,7 +138,7 @@ export async function createDepartment(
   const approverIds = formData.getAll("approverIds").filter((v): v is string => typeof v === "string" && v.length > 0);
   const errors: Record<string, string[]> = {};
 
-  if (typeof name !== "string" || name.trim().length === 0) {
+  if (!isNonEmptyString(name)) {
     errors.name = ["Enter a department name."];
   }
 

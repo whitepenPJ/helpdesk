@@ -1,3 +1,16 @@
+// True only when `value` is a string with at least one non-whitespace
+// character — i.e. false for null, undefined, non-strings, "" and "   ".
+// Narrows to `string` so callers can `.trim()` afterwards without a recheck.
+export function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+// Inverse of isNonEmptyString — reads better in guard clauses that bail out
+// on missing/blank input.
+export function isBlank(value: unknown): boolean {
+  return !isNonEmptyString(value);
+}
+
 export function stripHtml(html: string): string {
   return html
     .replace(/<[^>]*>/g, " ")

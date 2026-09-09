@@ -19,7 +19,7 @@ import {
 import { formatAssignment } from "@/app/lib/ticket-format";
 import { saveAttachments } from "@/app/lib/attachments";
 import { mapScoreToRating } from "@/app/lib/rating";
-import { stripHtml, textToSafeHtml } from "@/app/lib/text";
+import { isNonEmptyString, stripHtml, textToSafeHtml } from "@/app/lib/text";
 
 export type TicketFormValues = {
   title: string;
@@ -127,19 +127,19 @@ export async function createTicket(_prevState: TicketFormState, formData: FormDa
 
   const errors: Record<string, string[]> = {};
 
-  if (typeof title !== "string" || title.trim().length === 0) {
+  if (!isNonEmptyString(title)) {
     errors.title = ["Enter a title."];
   }
-  if (typeof description !== "string" || description.trim().length === 0) {
+  if (!isNonEmptyString(description)) {
     errors.description = ["Enter a description."];
   }
-  if (typeof telephone !== "string" || telephone.trim().length === 0) {
+  if (!isNonEmptyString(telephone)) {
     errors.telephone = ["Enter a telephone number."];
   }
   if (typeof categoryId !== "string" || !categoryId) {
     errors.categoryId = ["Select a category."];
   }
-  if (needApproval && (typeof approvalMessage !== "string" || approvalMessage.trim().length === 0)) {
+  if (needApproval && !isNonEmptyString(approvalMessage)) {
     errors.approvalMessage = ["Enter a message for the approver."];
   }
 
@@ -152,7 +152,7 @@ export async function createTicket(_prevState: TicketFormState, formData: FormDa
     prisma.user.findUnique({
       where: { id: creatorId },
       include: {
-        Department_User_departmentIdToDepartment: { include: { DepartmentApprover: true } },
+        department: { include: { DepartmentApprover: true } },
       },
     }),
     prisma.categoryAdmin.findMany({
@@ -171,7 +171,7 @@ export async function createTicket(_prevState: TicketFormState, formData: FormDa
   if (!creator) {
     return { errors: { creatorId: ["Selected creator was not found."] }, values };
   }
-  const department = creator.Department_User_departmentIdToDepartment;
+  const department = creator.department;
   if (!creator.companyId || !department) {
     return {
       errors: { creatorId: ["This user has no company/department assigned yet — update their profile first."] },
@@ -368,13 +368,13 @@ export async function editTicket(
 
   const errors: Record<string, string[]> = {};
 
-  if (typeof title !== "string" || title.trim().length === 0) {
+  if (!isNonEmptyString(title)) {
     errors.title = ["Enter a title."];
   }
-  if (typeof description !== "string" || description.trim().length === 0) {
+  if (!isNonEmptyString(description)) {
     errors.description = ["Enter a description."];
   }
-  if (typeof telephone !== "string" || telephone.trim().length === 0) {
+  if (!isNonEmptyString(telephone)) {
     errors.telephone = ["Enter a telephone number."];
   }
   if (typeof categoryId !== "string" || !categoryId) {
@@ -464,7 +464,7 @@ export async function deleteTicket(
   }
 
   const reason = formData.get("reason");
-  if (typeof reason !== "string" || reason.trim().length === 0) {
+  if (!isNonEmptyString(reason)) {
     return { error: "Enter a reason for deleting this ticket." };
   }
 

@@ -13,16 +13,10 @@ export const metadata: Metadata = { title: "Profile" };
 export default async function ProfilePage() {
   const session = await requireUser();
 
-  const [user, lessonsLearned, apiTokens] = await Promise.all([
+  const [user, apiTokens] = await Promise.all([
     prisma.user.findUnique({
       where: { id: session.user.id },
-      include: { Company: { select: { name: true } }, Department_User_departmentIdToDepartment: { select: { name: true } } },
-    }),
-    prisma.lessonLearned.findMany({
-      where: { isActive: true },
-      orderBy: { createdAt: "desc" },
-      take: 5,
-      select: { id: true, title: true, description: true, images: true },
+      include: { Company: { select: { name: true } }, department: { select: { name: true } } },
     }),
     prisma.apiToken.findMany({
       where: { userId: session.user.id },
@@ -50,7 +44,7 @@ export default async function ProfilePage() {
                 role={ROLE_LABEL[user.role]}
                 hasPassword={Boolean(user.passwordHash)}
                 companyName={user.Company?.name ?? null}
-                departmentName={user.Department_User_departmentIdToDepartment?.name ?? null}
+                departmentName={user.department?.name ?? null}
                 initialValues={{
                   name: user.name,
                   telephone: user.telephone ?? "",

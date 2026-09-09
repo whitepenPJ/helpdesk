@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/app/lib/db";
 import { requireAdmin } from "@/app/lib/dal";
+import { isNonEmptyString } from "@/app/lib/text";
 import { Role } from "@/app/generated/prisma/enums";
 import type { UserStatus } from "@/app/generated/prisma/client";
 import type { Row } from "exceljs";
@@ -82,7 +83,7 @@ export async function createUser(_prevState: UserFormState, formData: FormData):
 
   const errors: Record<string, string[]> = {};
 
-  if (typeof name !== "string" || name.trim().length === 0) {
+  if (!isNonEmptyString(name)) {
     errors.name = ["Enter a name."];
   }
   if (typeof email !== "string" || !EMAIL_PATTERN.test(email)) {
@@ -147,7 +148,7 @@ export async function updateUser(
 
   const errors: Record<string, string[]> = {};
 
-  if (typeof name !== "string" || name.trim().length === 0) {
+  if (!isNonEmptyString(name)) {
     errors.name = ["Enter a name."];
   }
   if (typeof email !== "string" || !EMAIL_PATTERN.test(email)) {

@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/app/lib/db";
 import { requireAdmin } from "@/app/lib/dal";
+import { isNonEmptyString } from "@/app/lib/text";
 
 export type StagedMemberInput = { id: string; label: string };
 
@@ -52,7 +53,7 @@ export async function createCategory(_prevState: CategoryFormState, formData: Fo
   const values = { name: typeof name === "string" ? name : "", isActive, responsibleUsers, responsibleGroups };
   const errors: Record<string, string[]> = {};
 
-  if (typeof name !== "string" || name.trim().length === 0) {
+  if (!isNonEmptyString(name)) {
     errors.name = ["Enter a category name."];
   }
 
@@ -104,7 +105,7 @@ export async function updateCategory(
   const values = { name: typeof name === "string" ? name : "", isActive, responsibleUsers, responsibleGroups };
   const errors: Record<string, string[]> = {};
 
-  if (typeof name !== "string" || name.trim().length === 0) {
+  if (!isNonEmptyString(name)) {
     errors.name = ["Enter a category name."];
   }
 

@@ -9,48 +9,47 @@ datasource db {
 }
 
 model User {
-  id                                       String             @id @default(cuid())
-  name                                     String
-  email                                    String             @unique
-  passwordHash                             String?
-  role                                     Role               @default(USER)
-  status                                   UserStatus         @default(ACTIVE)
-  isAssignee                               Boolean            @default(false)
+  id                              String               @id @default(cuid())
+  name                            String
+  email                           String               @unique
+  passwordHash                    String?
+  role                            Role                 @default(USER)
+  status                          UserStatus           @default(ACTIVE)
+  isAssignee                      Boolean              @default(false)
   // Master User's "Options" group — lets this user pick any user as the
   // Creator on the New Ticket form (like an admin can), instead of it being
   // locked to themselves. See canChangeCreator in app/(backend)/tickets/new/page.tsx.
-  canOpenTicketForOthers                   Boolean            @default(false)
-  image                                    String?
-  companyId                                String?
-  departmentId                             String?
-  userGroupId                              String?
-  createdAt                                DateTime           @default(now())
-  updatedAt                                DateTime           @updatedAt
-  telephone                                String?
+  canOpenTicketForOthers          Boolean              @default(false)
+  image                           String?
+  companyId                       String?
+  departmentId                    String?
+  createdAt                       DateTime             @default(now())
+  updatedAt                       DateTime             @updatedAt
+  telephone                       String?
   // Auth.js (NextAuth) OAuth account-linking bookkeeping — unused by the
   // Credentials provider, only populated for OAuth sign-ins (e.g. Azure AD).
-  emailVerified                            DateTime?
+  emailVerified                   DateTime?
   // Last time this user opened the header notification bell — drives the
   // unread badge count on the derived TicketHistory activity feed.
-  notificationsSeenAt                      DateTime?
-  accounts                                 Account[]
-  sessions                                 Session[]
-  ApiToken                                 ApiToken[]
-  AuditLog                                 AuditLog[]
-  CategoryAdmin                            CategoryAdmin[]
-  DepartmentApprover                       DepartmentApprover[]
-  LessonLearned                            LessonLearned[]
-  Notification                             Notification[]
-  PushSubscription                         PushSubscription[]
-  Ticket_Ticket_createdByIdToUser          Ticket[]           @relation("Ticket_createdByIdToUser")
-  Ticket_Ticket_deletedByIdToUser          Ticket[]           @relation("Ticket_deletedByIdToUser")
-  TicketApproval                           TicketApproval[]
-  TicketAssignee                           TicketAssignee[]
-  TicketComment                            TicketComment[]
-  TicketHistory                            TicketHistory[]
-  Company                                  Company?           @relation(fields: [companyId], references: [id])
-  Department_User_departmentIdToDepartment Department?        @relation("User_departmentIdToDepartment", fields: [departmentId], references: [id])
-  UserGroup                                UserGroup?         @relation(fields: [userGroupId], references: [id])
+  notificationsSeenAt             DateTime?
+  accounts                        Account[]
+  sessions                        Session[]
+  ApiToken                        ApiToken[]
+  AuditLog                        AuditLog[]
+  CategoryAdmin                   CategoryAdmin[]
+  DepartmentApprover              DepartmentApprover[]
+  LessonLearned                   LessonLearned[]
+  Notification                    Notification[]
+  PushSubscription                PushSubscription[]
+  Ticket_Ticket_createdByIdToUser Ticket[]             @relation("Ticket_createdByIdToUser")
+  Ticket_Ticket_deletedByIdToUser Ticket[]             @relation("Ticket_deletedByIdToUser")
+  TicketApproval                  TicketApproval[]
+  TicketAssignee                  TicketAssignee[]
+  TicketComment                   TicketComment[]
+  TicketHistory                   TicketHistory[]
+  UserGroupMember                 UserGroupMember[]
+  Company                         Company?             @relation(fields: [companyId], references: [id])
+  department                      Department?          @relation(fields: [departmentId], references: [id])
 
   @@index([companyId])
   @@index([departmentId])
@@ -173,16 +172,16 @@ model Company {
 }
 
 model Department {
-  id                                 String   @id
-  name                               String
-  code                               String?
-  companyId                          String
-  createdAt                          DateTime @default(now())
-  updatedAt                          DateTime
-  Company                            Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  DepartmentApprover                 DepartmentApprover[]
-  Ticket                             Ticket[]
-  User_User_departmentIdToDepartment User[]   @relation("User_departmentIdToDepartment")
+  id                 String               @id
+  name               String
+  code               String?
+  companyId          String
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime
+  Company            Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  DepartmentApprover DepartmentApprover[]
+  Ticket             Ticket[]
+  users              User[]
 
   @@unique([companyId, name])
   @@unique([companyId, code])
@@ -319,13 +318,13 @@ model Ticket {
 }
 
 model TicketApproval {
-  id           String         @id
-  ticketId     String         @unique
+  id             String         @id
+  ticketId       String         @unique
   // Who actually decided — null while PENDING, since the request now goes to
   // every one of the department's approvers (DepartmentApprover) rather than
   // one designated person; whoever acts first is recorded here.
-  supervisorId String?
-  status       ApprovalStatus @default(PENDING)
+  supervisorId   String?
+  status         ApprovalStatus @default(PENDING)
   // The admin's message when requesting approval. `comments` is the
   // supervisor's decision reason (approve/reject), set when `status` moves
   // off PENDING.
@@ -400,7 +399,23 @@ model UserGroup {
   updatedAt           DateTime
   CategoryUserGroup   CategoryUserGroup[]
   TicketAssignedGroup TicketAssignedGroup[]
-  User                User[]
+  UserGroupMember     UserGroupMember[]
+}
+
+// Join model for User <-> UserGroup: a user can belong to many groups and a
+// group holds many users. Replaces the old single User.userGroupId column —
+// same explicit-join pattern as TicketAssignedGroup / DepartmentApprover.
+model UserGroupMember {
+  id          String    @id
+  userId      String
+  userGroupId String
+  createdAt   DateTime  @default(now())
+  User        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  UserGroup   UserGroup @relation(fields: [userGroupId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, userGroupId])
+  @@index([userId])
+  @@index([userGroupId])
 }
 
 enum Role {

@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/app/lib/db";
 import { requireUser } from "@/app/lib/dal";
 import { generateApiToken, hashApiToken } from "@/app/lib/api-tokens";
+import { isNonEmptyString } from "@/app/lib/text";
 
 export type CreateApiTokenState =
   | {
@@ -23,7 +24,7 @@ export async function createApiToken(
   const session = await requireUser();
 
   const name = formData.get("name");
-  if (typeof name !== "string" || name.trim().length === 0) {
+  if (!isNonEmptyString(name)) {
     return { errors: { name: ["Enter a name for this token."] } };
   }
 

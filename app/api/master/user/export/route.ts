@@ -24,7 +24,7 @@ export async function GET(request: Request): Promise<Response> {
 
   const users = await prisma.user.findMany({
     where,
-    include: { Company: true, Department_User_departmentIdToDepartment: true },
+    include: { Company: true, department: true },
     orderBy: { name: "asc" },
   });
 
@@ -52,7 +52,7 @@ export async function GET(request: Request): Promise<Response> {
       u.role,
       u.status,
       u.Company?.name ?? "",
-      u.Department_User_departmentIdToDepartment?.name ?? "",
+      u.department?.name ?? "",
       u.telephone ?? "",
       u.canOpenTicketForOthers ? "Yes" : "No",
       formatDateTime(u.createdAt),

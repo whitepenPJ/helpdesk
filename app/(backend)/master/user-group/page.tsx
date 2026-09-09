@@ -6,9 +6,10 @@ import { deleteUserGroup } from "@/app/actions/user-groups";
 import { ListCard, type ListColumn } from "../../_components/list-card";
 import { RowActions } from "../../_components/row-actions";
 import { ErrorAlert } from "../../_components/error-alert";
-import { parseSort, type SortDir } from "@/app/lib/table-sort";
+import type { SortDir } from "@/app/lib/table-sort";
 import type { Prisma } from "@/app/generated/prisma/client";
-import { parsePageSize } from "@/app/lib/page-size";
+import { fetchPage } from "@/app/lib/list-query";
+import { parseListParams } from "@/app/lib/list-params";
 
 export const metadata: Metadata = { title: "User Groups" };
 
@@ -29,7 +30,7 @@ const COLUMNS: ListColumn[] = [
 function buildOrderBy(sortBy: SortColumn, sortDir: SortDir): Prisma.UserGroupOrderByWithRelationInput {
   switch (sortBy) {
     case "members":
-      return { User: { _count: sortDir } };
+      return { UserGroupMember: { _count: sortDir } };
     case "tickets":
       return { TicketAssignedGroup: { _count: sortDir } };
     default:
@@ -44,33 +45,28 @@ const ERROR_MESSAGES: Record<string, string> = {
 export default async function UserGroupsPage({ searchParams }: PageProps<"/master/user-group">) {
   const session = await requireAdmin();
 
-  const { q, page, pageSize: pageSizeParam, error, sort, dir } = await searchParams;
-  const query = typeof q === "string" ? q : "";
-  const pageSize = parsePageSize(typeof pageSizeParam === "string" ? pageSizeParam : undefined);
-  const currentPage = Math.max(1, Number(page) || 1);
-  const { sortBy, sortDir } = parseSort(
-    typeof sort === "string" ? sort : undefined,
-    typeof dir === "string" ? dir : undefined,
-    SORT_COLUMNS,
-    { column: "createdAt", dir: "desc" }
-  );
+  const params = await searchParams;
+  const { query, currentPage, pageSize, sortBy, sortDir, linkQuery } = parseListParams(params, SORT_COLUMNS, {
+    column: "createdAt",
+    dir: "desc",
+  });
+  const errorMessage = typeof params.error === "string" ? ERROR_MESSAGES[params.error] : undefined;
 
   const where: Prisma.UserGroupWhereInput = query ? { name: { contains: query, mode: "insensitive" } } : {};
 
-  const [groups, total] = await Promise.all([
-    prisma.userGroup.findMany({
-      where,
-      include: { _count: { select: { User: true, TicketAssignedGroup: true } } },
-      orderBy: buildOrderBy(sortBy, sortDir),
-      skip: (currentPage - 1) * pageSize,
-      take: pageSize,
-    }),
-    prisma.userGroup.count({ where }),
-  ]);
+  const { items: groups, total } = await fetchPage(
+    () =>
+      prisma.userGroup.findMany({
+        where,
+        include: { _count: { select: { UserGroupMember: true, TicketAssignedGroup: true } } },
+        orderBy: buildOrderBy(sortBy, sortDir),
+        skip: (currentPage - 1) * pageSize,
+        take: pageSize,
+      }),
+    () => prisma.userGroup.count({ where })
+  );
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const errorMessage = typeof error === "string" ? ERROR_MESSAGES[error] : undefined;
-  const linkQuery = { ...(query ? { q: query } : {}), pageSize: String(pageSize) };
 
   return (
     <>
@@ -106,7 +102,7 @@ export default async function UserGroupsPage({ searchParams }: PageProps<"/maste
                         {group.isActive ? "ACTIVE" : "INACTIVE"}
                       </span>
                     </td>
-                    <td>{group._count.User}</td>
+                    <td>{group._count.UserGroupMember}</td>
                     <td>{group._count.TicketAssignedGroup}</td>
                     <td className="text-end">
                       <RowActions

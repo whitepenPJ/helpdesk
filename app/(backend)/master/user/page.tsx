@@ -7,12 +7,13 @@ import { ImportUsersButton } from "./import-users-button";
 import { ListCard, type ListColumn } from "../../_components/list-card";
 import { RowActions } from "../../_components/row-actions";
 import { ErrorAlert } from "../../_components/error-alert";
-import { parseSort, type SortDir } from "@/app/lib/table-sort";
+import type { SortDir } from "@/app/lib/table-sort";
 import type { Prisma } from "@/app/generated/prisma/client";
 import { Role } from "@/app/generated/prisma/enums";
 import { ROLE_LABEL } from "@/app/lib/roles";
 import { formatDateTime } from "@/app/lib/date-format";
-import { parsePageSize } from "@/app/lib/page-size";
+import { fetchPage } from "@/app/lib/list-query";
+import { parseListParams } from "@/app/lib/list-params";
 
 export const metadata: Metadata = { title: "Users" };
 
@@ -53,17 +54,14 @@ const ERROR_MESSAGES: Record<string, string> = {
 export default async function UsersPage({ searchParams }: PageProps<"/master/user">) {
   const session = await requireAdmin();
 
-  const { q, role, page, pageSize: pageSizeParam, error, sort, dir } = await searchParams;
-  const query = typeof q === "string" ? q : "";
-  const roleFilter = typeof role === "string" && role !== "all" ? role : "";
-  const pageSize = parsePageSize(typeof pageSizeParam === "string" ? pageSizeParam : undefined);
-  const currentPage = Math.max(1, Number(page) || 1);
-  const { sortBy, sortDir } = parseSort(
-    typeof sort === "string" ? sort : undefined,
-    typeof dir === "string" ? dir : undefined,
+  const params = await searchParams;
+  const { query, currentPage, pageSize, sortBy, sortDir, linkQuery: baseLinkQuery } = parseListParams(
+    params,
     SORT_COLUMNS,
     { column: "createdAt", dir: "desc" }
   );
+  const roleFilter = typeof params.role === "string" && params.role !== "all" ? params.role : "";
+  const errorMessage = typeof params.error === "string" ? ERROR_MESSAGES[params.error] : undefined;
 
   const where: Prisma.UserWhereInput = {
     ...(query
@@ -77,24 +75,20 @@ export default async function UsersPage({ searchParams }: PageProps<"/master/use
     ...(roleFilter ? { role: roleFilter as Role } : {}),
   };
 
-  const [users, total] = await Promise.all([
-    prisma.user.findMany({
-      where,
-      include: { Company: true, Department_User_departmentIdToDepartment: true },
-      orderBy: buildOrderBy(sortBy, sortDir),
-      skip: (currentPage - 1) * pageSize,
-      take: pageSize,
-    }),
-    prisma.user.count({ where }),
-  ]);
+  const { items: users, total } = await fetchPage(
+    () =>
+      prisma.user.findMany({
+        where,
+        include: { Company: true, department: true },
+        orderBy: buildOrderBy(sortBy, sortDir),
+        skip: (currentPage - 1) * pageSize,
+        take: pageSize,
+      }),
+    () => prisma.user.count({ where })
+  );
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const errorMessage = typeof error === "string" ? ERROR_MESSAGES[error] : undefined;
-  const linkQuery = {
-    ...(query ? { q: query } : {}),
-    ...(roleFilter ? { role: roleFilter } : {}),
-    pageSize: String(pageSize),
-  };
+  const linkQuery = { ...baseLinkQuery, ...(roleFilter ? { role: roleFilter } : {}) };
   const exportQuery = new URLSearchParams({
     ...(query ? { q: query } : {}),
     ...(roleFilter ? { role: roleFilter } : {}),
@@ -162,9 +156,9 @@ export default async function UsersPage({ searchParams }: PageProps<"/master/use
                     <td>{user.email}</td>
                     <td>
                       {user.Company?.name ?? <span className="text-secondary">—</span>}
-                      {user.Department_User_departmentIdToDepartment && (
+                      {user.department && (
                         <div className="fs-7 text-secondary">
-                          {user.Department_User_departmentIdToDepartment.name}
+                          {user.department.name}
                         </div>
                       )}
                     </td>
